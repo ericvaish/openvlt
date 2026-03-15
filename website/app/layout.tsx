@@ -16,12 +16,21 @@ export const metadata: Metadata = {
     url: "https://openvlt.com",
     siteName: "openvlt",
     type: "website",
+    images: [
+      {
+        url: "https://openvlt.com/og.webp",
+        width: 1200,
+        height: 630,
+        alt: "openvlt — open source, self-hosted, encrypted markdown notes",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "openvlt — open source, self-hosted notes",
     description:
       "Your notes as plain markdown files on your server. E2E encrypted. Works offline.",
+    images: ["https://openvlt.com/og.webp"],
   },
 }
 
