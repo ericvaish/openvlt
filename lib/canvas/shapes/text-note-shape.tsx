@@ -204,6 +204,13 @@ export class TextNoteShapeUtil extends ShapeUtil<TextNoteShape> {
     return true
   }
 
+  override onEditEnd(shape: TextNoteShape) {
+    // Auto-delete empty text boxes
+    if (!shape.props.content || shape.props.content.trim() === "") {
+      this.editor.deleteShape(shape.id)
+    }
+  }
+
   override canResize() {
     return true
   }

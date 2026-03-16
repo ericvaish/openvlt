@@ -15,6 +15,7 @@ import {
   type TextNoteShape,
 } from "@/lib/canvas/shapes/text-note-shape"
 import { TextNoteTool } from "@/lib/canvas/tools/text-note-tool"
+import { CanvasToolbarInline } from "@/components/canvas/canvas-toolbar-inline"
 
 const customShapeUtils = [TextNoteShapeUtil]
 const customTools = [TextNoteTool]
@@ -68,9 +69,11 @@ function CanvasSkeleton() {
 interface CanvasEditorProps {
   noteId: string
   initialData: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onEditorReady?: (editor: any) => void
 }
 
-export function CanvasEditor({ noteId, initialData }: CanvasEditorProps) {
+export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEditorProps) {
   const { resolvedTheme } = useTheme()
   const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -96,54 +99,201 @@ export function CanvasEditor({ noteId, initialData }: CanvasEditorProps) {
     (editor: any) => {
       editorRef.current = editor
 
-      // Track text-note selection for the style bar
-      editor.store.listen(
-        () => {
-          const selected = editor.getSelectedShapes()
-          if (selected.length === 1 && selected[0].type === "text-note") {
-            setSelectedTextNote(selected[0] as TextNoteShape)
-          } else {
-            setSelectedTextNote(null)
+      // Default to draw tool — finger auto-switches to hand for panning
+      editor.setCurrentTool("draw")
+
+      // Auto-mode: finger = pan, pen = active tool
+      // Intercept single-finger touch for manual panning.
+      // Let multi-touch (pinch-to-zoom) pass through to tldraw.
+      // Pen events always pass through to tldraw.
+      requestAnimationFrame(() => {
+        const container = document.querySelector(".canvas-editor-wrapper .tl-container")
+        if (!container) return
+
+        let touchStartX = 0
+        let touchStartY = 0
+        let cameraStartX = 0
+        let cameraStartY = 0
+        let isTouchPanning = false
+        let activeTouchCount = 0
+        let lastTapTime = 0
+        let lastTapX = 0
+        let lastTapY = 0
+
+        // Track all active touch pointers for pinch detection
+        const touchPointers = new Map<number, { x: number; y: number }>()
+        let isPinching = false
+        let pinchStartDist = 0
+        let pinchStartZoom = 1
+        let pinchMidX = 0
+        let pinchMidY = 0
+
+        // Block ALL touch events from reaching tldraw — we handle them ourselves
+        container.addEventListener("pointerdown", (e: Event) => {
+          const pe = e as PointerEvent
+          if (pe.pointerType !== "touch") return
+          e.stopPropagation()
+
+          touchPointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY })
+          activeTouchCount = touchPointers.size
+
+          if (activeTouchCount === 1) {
+            isTouchPanning = true
+            isPinching = false
+            touchStartX = pe.clientX
+            touchStartY = pe.clientY
+            const cam = editor.getCamera()
+            cameraStartX = cam.x
+            cameraStartY = cam.y
+          } else if (activeTouchCount === 2) {
+            // Start pinch-to-zoom
+            isTouchPanning = false
+            isPinching = true
+            const pts = [...touchPointers.values()]
+            pinchStartDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)
+            pinchStartZoom = editor.getZoomLevel()
+            pinchMidX = (pts[0].x + pts[1].x) / 2
+            pinchMidY = (pts[0].y + pts[1].y) / 2
+            const cam = editor.getCamera()
+            cameraStartX = cam.x
+            cameraStartY = cam.y
           }
-        },
-        { source: "user", scope: "session" }
-      )
+        }, { capture: true })
 
-      // Double-click/double-tap on empty canvas → create our text-note shape
-      let lastPointerDownTime = 0
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      editor.on("event", (event: any) => {
-        if (event.type !== "pointer" || event.name !== "pointer_down") return
+        container.addEventListener("pointermove", (e: Event) => {
+          const pe = e as PointerEvent
+          if (pe.pointerType !== "touch") return
+          e.stopPropagation()
 
-        const now = Date.now()
-        const timeSinceLastDown = now - lastPointerDownTime
-        lastPointerDownTime = now
+          touchPointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY })
 
-        // Detect double-click: two pointer_down events within 400ms
-        if (timeSinceLastDown > 400) return
-        if (editor.getCurrentToolId() !== "select") return
+          if (isTouchPanning && touchPointers.size === 1) {
+            const zoom = editor.getZoomLevel()
+            const dx = (pe.clientX - touchStartX) / zoom
+            const dy = (pe.clientY - touchStartY) / zoom
+            editor.setCamera({ x: cameraStartX + dx, y: cameraStartY + dy })
+          } else if (isPinching && touchPointers.size === 2) {
+            const pts = [...touchPointers.values()]
+            const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)
+            const newZoom = Math.min(8, Math.max(0.1, pinchStartZoom * (dist / pinchStartDist)))
+            const currentMidX = (pts[0].x + pts[1].x) / 2
+            const currentMidY = (pts[0].y + pts[1].y) / 2
 
-        // Only create if no shape under pointer
-        const hitShape = editor.getShapeAtPoint(
-          editor.inputs.currentPagePoint
-        )
-        if (hitShape) return
+            // tldraw camera model:
+            //   pageX = (screenX - screenBounds.x) / zoom - camera.x
+            //   camera.x = (screenX - screenBounds.x) / zoom - pageX
+            //
+            // The page point under the original pinch midpoint must stay
+            // under the current midpoint after zoom changes.
+            const sb = editor.getViewportScreenBounds()
+            const anchorPageX = (pinchMidX - sb.x) / pinchStartZoom - cameraStartX
+            const anchorPageY = (pinchMidY - sb.y) / pinchStartZoom - cameraStartY
 
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { createShapeId } = require("tldraw")
-        const { x, y } = editor.inputs.currentPagePoint
-        const id = createShapeId()
-        const defaults = getTextNoteDefaults()
-        editor.createShape({
-          id,
-          type: "text-note",
-          x,
-          y,
-          props: { w: 300, h: 30, content: "", ...defaults },
+            editor.setCamera({
+              x: (currentMidX - sb.x) / newZoom - anchorPageX,
+              y: (currentMidY - sb.y) / newZoom - anchorPageY,
+              z: newZoom,
+            })
+          }
+        }, { capture: true })
+
+        container.addEventListener("pointerup", (e: Event) => {
+          const pe = e as PointerEvent
+          if (pe.pointerType !== "touch") return
+          e.stopPropagation()
+
+          // Double-tap detection (only on single-finger tap with minimal movement)
+          if (isTouchPanning) {
+            const moved = Math.hypot(pe.clientX - touchStartX, pe.clientY - touchStartY)
+            if (moved < 10) {
+              const now = Date.now()
+              const dist = Math.hypot(pe.clientX - lastTapX, pe.clientY - lastTapY)
+              if (now - lastTapTime < 400 && dist < 30) {
+                const point = editor.screenToPage({ x: pe.clientX, y: pe.clientY })
+                const hitShape = editor.getShapeAtPoint(point)
+                if (!hitShape) {
+                  // eslint-disable-next-line @typescript-eslint/no-require-imports
+                  const { createShapeId } = require("tldraw")
+                  const id = createShapeId()
+                  const defaults = getTextNoteDefaults()
+                  editor.createShape({
+                    id, type: "text-note", x: point.x, y: point.y,
+                    props: { w: 300, h: 30, content: "", ...defaults },
+                  })
+                  editor.setCurrentTool("select")
+                  editor.select(id)
+                  editor.setEditingShape(id)
+                }
+                lastTapTime = 0
+              } else {
+                lastTapTime = Date.now()
+                lastTapX = pe.clientX
+                lastTapY = pe.clientY
+              }
+            }
+          }
+
+          touchPointers.delete(pe.pointerId)
+          activeTouchCount = touchPointers.size
+          if (activeTouchCount === 0) {
+            isTouchPanning = false
+            isPinching = false
+          }
+        }, { capture: true })
+
+        container.addEventListener("pointercancel", (e: Event) => {
+          const pe = e as PointerEvent
+          if (pe.pointerType !== "touch") return
+          touchPointers.delete(pe.pointerId)
+          activeTouchCount = touchPointers.size
+          if (activeTouchCount === 0) {
+            isTouchPanning = false
+            isPinching = false
+          }
+        }, { capture: true })
+
+        // Double-click with mouse/pen → create text-note
+        container.addEventListener("dblclick", (e: Event) => {
+          const me = e as MouseEvent
+          const point = editor.screenToPage({ x: me.clientX, y: me.clientY })
+          const hitShape = editor.getShapeAtPoint(point)
+          if (hitShape) return
+
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { createShapeId } = require("tldraw")
+          const id = createShapeId()
+          const defaults = getTextNoteDefaults()
+          editor.createShape({
+            id,
+            type: "text-note",
+            x: point.x,
+            y: point.y,
+            props: { w: 300, h: 30, content: "", ...defaults },
+          })
+          editor.setCurrentTool("select")
+          editor.select(id)
+          editor.setEditingShape(id)
         })
-        editor.select(id)
-        editor.setEditingShape(id)
       })
+
+      // Notify parent so toolbar can be rendered in the header
+      onEditorReady?.(editor)
+
+      // Track text-note selection for the style bar
+      function updateSelectedTextNote() {
+        const selected = editor.getSelectedShapes()
+        if (selected.length === 1 && selected[0].type === "text-note") {
+          setSelectedTextNote({ ...selected[0] } as TextNoteShape)
+        } else {
+          setSelectedTextNote(null)
+        }
+      }
+      // Watch selection changes
+      editor.store.listen(updateSelectedTextNote, { source: "user", scope: "session" })
+      // Watch shape prop changes (font/size/color updates)
+      editor.store.listen(updateSelectedTextNote, { source: "user", scope: "document" })
+
+      // Double-click/double-tap handled at DOM level (see below in requestAnimationFrame)
 
       // Listen for changes and auto-save
       editor.store.listen(
@@ -205,6 +355,7 @@ export function CanvasEditor({ noteId, initialData }: CanvasEditorProps) {
   // Track selected text-note shape for the style bar
   const [selectedTextNote, setSelectedTextNote] =
     React.useState<TextNoteShape | null>(null)
+  const [defaultSaved, setDefaultSaved] = React.useState(false)
 
   const updateTextNoteStyle = React.useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -224,8 +375,8 @@ export function CanvasEditor({ noteId, initialData }: CanvasEditorProps) {
       {/* Text note style bar — rendered outside tldraw so events work */}
       {selectedTextNote && (
         <div
-          className="flex items-center gap-2 border-b bg-background px-3 py-1.5"
-          style={{ zIndex: 50 }}
+          className="absolute left-0 right-0 flex items-center gap-2 border-b bg-background/95 px-3 py-1.5 backdrop-blur-sm"
+          style={{ zIndex: 9999, top: 0 }}
         >
           {/* Fonts */}
           {(["draw", "sans", "serif", "mono"] as TextNoteFont[]).map((f) => (
@@ -315,11 +466,17 @@ export function CanvasEditor({ noteId, initialData }: CanvasEditorProps) {
                 size: selectedTextNote.props.size,
                 color: selectedTextNote.props.color,
               })
+              setDefaultSaved(true)
+              setTimeout(() => setDefaultSaved(false), 1500)
             }}
-            className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
+              defaultSaved
+                ? "bg-green-500 text-white"
+                : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
             title="New text boxes will use these settings"
           >
-            Set as default
+            {defaultSaved ? "Saved!" : "Set as default"}
           </button>
         </div>
       )}
@@ -434,6 +591,7 @@ export function CanvasEditor({ noteId, initialData }: CanvasEditorProps) {
           tools={customTools}
           overrides={overrides}
           onMount={handleMount}
+          hideUi
           inferDarkMode={false}
           forceMobile={false}
           options={{

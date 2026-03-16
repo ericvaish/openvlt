@@ -20,9 +20,10 @@ import type { NoteMetadata } from "@/types/note"
 interface NoteHeaderProps {
   note: NoteMetadata
   isSplit?: boolean
+  toolbarSlot?: React.ReactNode
 }
 
-export function NoteHeader({ note, isSplit = false }: NoteHeaderProps) {
+export function NoteHeader({ note, isSplit = false, toolbarSlot }: NoteHeaderProps) {
   const { closeTab, updateTabTitle, openSplit, splitNoteId, closeSplit } =
     useTabStore()
   const [title, setTitle] = React.useState(note.title)
@@ -83,6 +84,8 @@ export function NoteHeader({ note, isSplit = false }: NoteHeaderProps) {
           className="flex-1 bg-transparent text-sm font-medium outline-none"
           placeholder="Untitled"
         />
+
+        {toolbarSlot}
 
         <span className="text-sm text-muted-foreground">{timeAgo}</span>
 

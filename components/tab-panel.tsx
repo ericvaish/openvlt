@@ -5,6 +5,7 @@ import { NoteHeader } from "@/components/note-header"
 import { NoteEditor } from "@/components/note-editor"
 import { ExcalidrawEditor } from "@/components/excalidraw-editor"
 import { CanvasEditor } from "@/components/canvas-editor"
+import { CanvasToolbarInline } from "@/components/canvas/canvas-toolbar-inline"
 import { LockPrompt } from "@/components/lock-dialog"
 import type { NoteMetadata } from "@/types"
 
@@ -34,6 +35,8 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
   const [content, setContent] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
   const fetchedRef = React.useRef(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [canvasEditor, setCanvasEditor] = React.useState<any>(null)
 
   React.useEffect(() => {
     if (fetchedRef.current) return
@@ -71,6 +74,10 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
   const isCanvas = isCanvasFile(metadata)
   const isLocked = metadata.isLocked
 
+  const canvasToolbar = isCanvas && canvasEditor ? (
+    <CanvasToolbarInline editor={canvasEditor} />
+  ) : null
+
   // Locked note: show password prompt, then render editor with decrypted content
   if (isLocked) {
     return (
@@ -83,9 +90,9 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
 
   return (
     <div className={`flex h-full min-w-0 flex-col overflow-hidden ${active ? "" : "hidden"}`}>
-      <NoteHeader note={metadata} isSplit={isSplit} />
+      <NoteHeader note={metadata} isSplit={isSplit} toolbarSlot={canvasToolbar} />
       {isCanvas ? (
-        <CanvasEditor noteId={metadata.id} initialData={content} />
+        <CanvasEditor noteId={metadata.id} initialData={content} onEditorReady={setCanvasEditor} />
       ) : isExcalidraw ? (
         <ExcalidrawEditor noteId={metadata.id} initialData={content} />
       ) : (
