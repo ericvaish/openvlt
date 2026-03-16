@@ -84,6 +84,7 @@ export function getOrCreateDailyNote(
       isLocked: (existing.is_locked as number) === 1,
       tags: tagRows.map((t) => t.name),
       version: (existing.version as number) ?? 1,
+      noteType: "markdown",
     }
   }
 

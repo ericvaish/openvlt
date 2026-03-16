@@ -280,6 +280,25 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 7,
+    description: "Add note_type column for canvas notes",
+    up: (db) => {
+      const hasColumn = (table: string, column: string) => {
+        const cols = db.pragma(`table_info(${table})`) as { name: string }[]
+        return cols.some((c) => c.name === column)
+      }
+      if (!hasColumn("notes", "note_type")) {
+        db.exec(
+          "ALTER TABLE notes ADD COLUMN note_type TEXT NOT NULL DEFAULT 'markdown'"
+        )
+        // Backfill existing Excalidraw notes
+        db.exec(
+          "UPDATE notes SET note_type = 'excalidraw' WHERE file_path LIKE '%.excalidraw.json'"
+        )
+      }
+    },
+  },
 ]
 
 export function runMigrations(db: Database.Database) {

@@ -17,6 +17,7 @@ import {
   ChevronsUpDownIcon,
   CalendarIcon,
   BookmarkIcon,
+  PenLineIcon,
 } from "lucide-react"
 import {
   Sidebar,
@@ -180,6 +181,24 @@ export function AppSidebar() {
     }
   }
 
+  async function handleCreateCanvas() {
+    if (!hasVault) return
+    try {
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Untitled Canvas", noteType: "canvas" }),
+      })
+      if (res.ok) {
+        const note = await res.json()
+        openTab(note.id, note.title)
+        fetchTree()
+      }
+    } catch {
+      // silently fail
+    }
+  }
+
   async function handleCreateFolder() {
     if (!hasVault) return
     const name = prompt("Folder name:")
@@ -279,6 +298,13 @@ export function AppSidebar() {
                         <PlusIcon className="size-3.5" />
                       </button>
                       <button
+                        onClick={handleCreateCanvas}
+                        title="New Canvas"
+                        className="inline-flex size-5 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      >
+                        <PenLineIcon className="size-3.5" />
+                      </button>
+                      <button
                         onClick={handleCreateFolder}
                         title="New Folder"
                         className="inline-flex size-5 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -325,6 +351,10 @@ export function AppSidebar() {
                 <ContextMenuItem onClick={handleCreateNote}>
                   <FilePlusIcon className="mr-2 size-4" />
                   New Note
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleCreateCanvas}>
+                  <PenLineIcon className="mr-2 size-4" />
+                  New Canvas
                 </ContextMenuItem>
                 <ContextMenuItem onClick={handleCreateFolder}>
                   <FolderPlusIcon className="mr-2 size-4" />

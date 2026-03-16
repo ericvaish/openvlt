@@ -29,6 +29,7 @@ import {
   StarIcon,
   ExternalLinkIcon,
   PenLineIcon,
+  LayoutDashboardIcon,
 } from "lucide-react"
 import {
   SidebarMenu,
@@ -54,6 +55,12 @@ import {
 import type { TreeNode } from "@/types/note"
 
 // ── Helpers ──
+
+function getNoteIcon(path: string) {
+  if (path.endsWith(".canvas.json")) return LayoutDashboardIcon
+  if (path.endsWith(".excalidraw.json")) return PenLineIcon
+  return FileTextIcon
+}
 
 function getAttachmentIcon(mimeType?: string) {
   if (!mimeType) return FileIcon
@@ -292,6 +299,28 @@ function TreeItem({
     } catch {}
   }
 
+  async function handleCreateCanvas(folderId: string) {
+    const title = prompt("Canvas name:", "Untitled Canvas")
+    if (!title?.trim()) return
+    try {
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          parentId: folderId,
+          noteType: "canvas",
+        }),
+      })
+      if (res.ok) {
+        const note = await res.json()
+        openTab(note.id, note.title)
+        expand(node.id)
+        onRefresh()
+      }
+    } catch {}
+  }
+
   async function handleCreateSubfolder(parentId: string) {
     const name = prompt("Folder name:")
     if (!name?.trim()) return
@@ -481,6 +510,10 @@ function TreeItem({
         <PenLineIcon className="mr-2 size-4" />
         New drawing
       </ContextMenuItem>
+      <ContextMenuItem onClick={() => handleCreateCanvas(node.id)}>
+        <PenLineIcon className="mr-2 size-4" />
+        New canvas
+      </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onClick={handleMoveToPrompt}>
         <FolderInputIcon className="mr-2 size-4" />
@@ -586,6 +619,7 @@ function TreeItem({
 
   const Wrapper = nested ? React.Fragment : SidebarMenuItem
   const Btn = nested ? SidebarMenuSubButton : SidebarMenuButton
+  const NoteIcon = node.type === "file" ? getNoteIcon(node.path) : FileTextIcon
 
   // ── Folder rendering ──
 
@@ -655,7 +689,7 @@ function TreeItem({
               <ChevronRightIcon
                 className={`size-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
               />
-              <FileTextIcon className="size-4 shrink-0" />
+              <NoteIcon className="size-4 shrink-0" />
               <span>{node.name}</span>
             </Btn>
           </ContextMenuTrigger>
@@ -672,7 +706,7 @@ function TreeItem({
                   <AttachmentItem node={child} onRefresh={onRefresh} />
                 ) : (
                   <SidebarMenuSubButton className="pointer-events-none opacity-60">
-                    <FileTextIcon className="size-4 shrink-0" />
+                    {React.createElement(getNoteIcon(child.path), { className: "size-4 shrink-0" })}
                     <span>{child.name}</span>
                   </SidebarMenuSubButton>
                 )}
@@ -696,7 +730,7 @@ function TreeItem({
           onClick={() => openNote()}
           {...dragProps}
         >
-          <FileTextIcon className="size-4 shrink-0" />
+          <NoteIcon className="size-4 shrink-0" />
           <span>{node.name}</span>
         </Btn>
       </ContextMenuTrigger>

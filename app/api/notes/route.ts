@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user, vaultId } = await requireAuthWithVault()
     const body = await request.json()
-    const { title, parentId, content } = body
+    const { title, parentId, content, noteType } = body
 
     if (!title || typeof title !== "string") {
       return NextResponse.json(
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const note = createNote(title.trim(), user.id, vaultId, parentId || null, content)
+    const note = createNote(title.trim(), user.id, vaultId, parentId || null, content, noteType)
     return NextResponse.json(note, { status: 201 })
   } catch (error) {
     if (error instanceof AuthError) {

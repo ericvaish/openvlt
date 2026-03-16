@@ -13,6 +13,8 @@ export interface Session {
   createdAt: string
 }
 
+export type NoteType = "markdown" | "excalidraw" | "canvas"
+
 export interface NoteMetadata {
   id: string
   title: string
@@ -27,6 +29,7 @@ export interface NoteMetadata {
   isLocked: boolean
   tags: string[]
   version: number
+  noteType: NoteType
   /** IDs of notes that link to this note */
   backlinks?: string[]
 }

@@ -4,7 +4,7 @@ import { v4 as uuid } from "uuid"
 import { getDb } from "@/lib/db"
 import { getVaultPath, safeResolvePath } from "@/lib/vaults/service"
 import { recordStructureEvent } from "@/lib/versions/structure-events"
-import type { NoteMetadata, NoteWithContent, VersionTrigger } from "@/types"
+import type { NoteMetadata, NoteType, NoteWithContent, VersionTrigger } from "@/types"
 
 const TRASH_AUTO_PURGE_DAYS = 30
 
@@ -32,6 +32,7 @@ function toMetadata(row: Record<string, unknown>): NoteMetadata {
     isLocked: (row.is_locked as number) === 1,
     tags: tagRows.map((t) => t.name),
     version: (row.version as number) ?? 1,
+    noteType: (row.note_type as NoteType) ?? "markdown",
   }
 }
 
@@ -40,7 +41,8 @@ export function createNote(
   userId: string,
   vaultId: string,
   parentId: string | null = null,
-  initialContent?: string
+  initialContent?: string,
+  noteType?: NoteType
 ): NoteMetadata {
   const db = getDb()
   const id = uuid()
@@ -71,9 +73,15 @@ export function createNote(
       ).path
     : null
 
-  // Determine file extension based on title
+  // Determine file extension and note type based on title or explicit noteType
   const isExcalidraw = safeTitle.endsWith(".excalidraw")
-  const ext = isExcalidraw ? ".json" : ".md"
+  const isCanvas = noteType === "canvas"
+  const ext = isExcalidraw ? ".json" : isCanvas ? ".canvas.json" : ".md"
+  const resolvedNoteType: NoteType = isExcalidraw
+    ? "excalidraw"
+    : isCanvas
+      ? "canvas"
+      : "markdown"
 
   // Find a unique filename (append counter if needed)
   let fileName = `${safeTitle}${ext}`
@@ -86,27 +94,35 @@ export function createNote(
   ) {
     const base = isExcalidraw
       ? `${safeTitle.slice(0, -".excalidraw".length)} ${counter}.excalidraw`
-      : `${safeTitle} ${counter}`
+      : isCanvas
+        ? `${safeTitle} ${counter}`
+        : `${safeTitle} ${counter}`
     fileName = `${base}${ext}`
     filePath = folderPrefix ? path.join(folderPrefix, fileName) : fileName
     counter++
   }
 
   const fullPath = safeResolvePath(vaultRoot, filePath)
-  const fileContent = initialContent ?? `# ${title}\n`
+  const defaultCanvasContent = JSON.stringify({
+    type: "openvlt-canvas",
+    version: 1,
+    document: {},
+  })
+  const fileContent = initialContent ?? (isCanvas ? defaultCanvasContent : `# ${title}\n`)
   fs.writeFileSync(fullPath, fileContent, "utf-8")
 
   const now = new Date().toISOString()
   db.prepare(
-    `INSERT INTO notes (id, title, file_path, parent_id, user_id, vault_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, title, filePath, parentId, userId, vaultId, now, now)
+    `INSERT INTO notes (id, title, file_path, parent_id, user_id, vault_id, created_at, updated_at, note_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, title, filePath, parentId, userId, vaultId, now, now, resolvedNoteType)
 
   // Index for full-text search
+  const ftsContent = isExcalidraw || isCanvas ? title : fileContent
   db.prepare(
     `INSERT INTO notes_fts (rowid, title, content)
      VALUES ((SELECT rowid FROM notes WHERE id = ?), ?, ?)`
-  ).run(id, title, isExcalidraw ? title : fileContent)
+  ).run(id, title, ftsContent)
 
   const metadata = toMetadata(
     db.prepare("SELECT * FROM notes WHERE id = ?").get(id) as Record<
@@ -164,10 +180,10 @@ export function updateNoteContent(
   const db = getDb()
   const row = db
     .prepare(
-      "SELECT file_path, title, version FROM notes WHERE id = ? AND user_id = ? AND vault_id = ?"
+      "SELECT file_path, title, version, note_type FROM notes WHERE id = ? AND user_id = ? AND vault_id = ?"
     )
     .get(id, userId, vaultId) as
-    | { file_path: string; title: string; version: number }
+    | { file_path: string; title: string; version: number; note_type: string }
     | undefined
 
   if (!row) throw new Error("Note not found")
@@ -175,9 +191,10 @@ export function updateNoteContent(
   const vaultRoot = getVaultPath(vaultId)
   const fullPath = safeResolvePath(vaultRoot, row.file_path)
   const currentVersion = row.version ?? 1
+  const isCanvasOrExcalidraw = row.note_type === "canvas" || row.note_type === "excalidraw"
 
-  // If baseVersion provided and doesn't match, attempt merge
-  if (baseVersion !== undefined && baseVersion < currentVersion) {
+  // If baseVersion provided and doesn't match, attempt merge (skip for canvas/excalidraw — not text-mergeable)
+  if (!isCanvasOrExcalidraw && baseVersion !== undefined && baseVersion < currentVersion) {
     const { threeWayMerge } =
       require("@/lib/sync/merge") as typeof import("@/lib/sync/merge")
     const { saveVersionGrouped } =
@@ -282,7 +299,13 @@ export function updateNoteTitle(
   const vaultRoot = getVaultPath(vaultId)
   const oldFullPath = safeResolvePath(vaultRoot, row.file_path)
   const dir = path.dirname(row.file_path)
-  const newFileName = `${title.replace(/[<>:"/\\|?*]/g, "_")}.md`
+
+  // Preserve the original file extension
+  const isCanvasFile = row.file_path.endsWith(".canvas.json")
+  const isExcalidrawFile = row.file_path.endsWith(".excalidraw.json")
+  const ext = isCanvasFile ? ".canvas.json" : isExcalidrawFile ? ".excalidraw.json" : ".md"
+  const safeNewTitle = title.replace(/[<>:"/\\|?*]/g, "_")
+  const newFileName = `${safeNewTitle}${ext}`
   const newFilePath = dir === "." ? newFileName : path.join(dir, newFileName)
   const newFullPath = safeResolvePath(vaultRoot, newFilePath)
 
