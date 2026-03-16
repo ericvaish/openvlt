@@ -51,6 +51,7 @@ import { useTabStore } from "@/lib/stores/tab-store"
 import { VaultSelector } from "@/components/vault-selector"
 import { useFsWatch } from "@/hooks/use-fs-watch"
 import { BookmarksPanel } from "@/components/bookmarks-panel"
+import { CreateVaultDialog } from "@/components/create-vault-dialog"
 import type { TreeNode } from "@/types/note"
 
 const quickAccessItems = [
@@ -333,8 +334,18 @@ export function AppSidebar() {
             </ContextMenu>
           </>
         ) : (
-          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            Create a vault to get started
+          <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              Create a vault to get started
+            </p>
+            <CreateVaultDialog
+              trigger={
+                <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
+                  <PlusIcon className="size-4" />
+                  Create Vault
+                </button>
+              }
+            />
           </div>
         )}
       </SidebarContent>

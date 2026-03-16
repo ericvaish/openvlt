@@ -7,6 +7,7 @@ LOG_DIR="$OPENVLT_HOME/logs"
 BIN_DIR="$OPENVLT_HOME/bin"
 REPO_URL="https://github.com/ericvaish/openvlt.git"
 DEFAULT_PORT=3456
+STARTUP_CMD=""
 
 # Colors
 RED='\033[0;31m'
@@ -197,19 +198,17 @@ install_cli() {
 setup_startup() {
   info "Configuring auto-start on boot..."
 
-  local os
+  local os startup_cmd
   os=$(detect_os)
 
   if [ "$os" = "macos" ]; then
-    pm2 startup launchd -u "$USER" --hp "$HOME" 2>/dev/null || true
+    startup_cmd=$(pm2 startup launchd -u "$USER" --hp "$HOME" 2>/dev/null | grep "sudo" | head -1) || true
   elif [ "$os" = "linux" ]; then
-    # pm2 startup prints a command the user needs to run with sudo
-    local startup_cmd
     startup_cmd=$(pm2 startup 2>/dev/null | grep "sudo" | head -1) || true
-    if [ -n "$startup_cmd" ]; then
-      info "Running startup command..."
-      eval "$startup_cmd" 2>/dev/null || warn "Auto-start setup needs sudo. Run manually: $startup_cmd"
-    fi
+  fi
+
+  if [ -n "$startup_cmd" ]; then
+    STARTUP_CMD="$startup_cmd"
   fi
 }
 
@@ -270,6 +269,11 @@ main() {
   echo -e "  ${DIM}Restart your terminal or run:${NC}"
   echo -e "  ${CYAN}source $(detect_shell_profile)${NC}"
   echo ""
+  if [ -n "$STARTUP_CMD" ]; then
+    echo -e "  ${DIM}To auto-start on reboot, run:${NC}"
+    echo -e "  ${CYAN}$STARTUP_CMD${NC}"
+    echo ""
+  fi
 }
 
 main "$@"
