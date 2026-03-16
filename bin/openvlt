@@ -6,7 +6,7 @@ APP_DIR="$OPENVLT_HOME/app"
 LOG_DIR="$OPENVLT_HOME/logs"
 PORT_FILE="$OPENVLT_HOME/.port"
 DEFAULT_PORT=3456
-REPO_URL="https://github.com/openvlt/openvlt.git"
+REPO_URL="https://github.com/ericvaish/openvlt.git"
 
 # Colors
 RED='\033[0;31m'

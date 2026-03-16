@@ -115,7 +115,7 @@ Notes are always plain markdown files on disk. SQLite handles metadata, search i
 ## Manual Setup
 
 ```bash
-git clone https://github.com/openvlt/openvlt.git
+git clone https://github.com/ericvaish/openvlt.git
 cd openvlt
 bun install
 bun run build

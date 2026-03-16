@@ -5,7 +5,7 @@ OPENVLT_HOME="${OPENVLT_HOME:-$HOME/.openvlt}"
 APP_DIR="$OPENVLT_HOME/app"
 LOG_DIR="$OPENVLT_HOME/logs"
 BIN_DIR="$OPENVLT_HOME/bin"
-REPO_URL="https://github.com/openvlt/openvlt.git"
+REPO_URL="https://github.com/ericvaish/openvlt.git"
 DEFAULT_PORT=3456
 
 # Colors
@@ -20,7 +20,7 @@ NC='\033[0m'
 print_banner() {
   echo ""
   echo -e "${BOLD}  ╔═══════════════════════════════════╗${NC}"
-  echo -e "${BOLD}  ║         OpenVlt Installer          ║${NC}"
+  echo -e "${BOLD}  ║         OpenVlt Installer         ║${NC}"
   echo -e "${BOLD}  ╚═══════════════════════════════════╝${NC}"
   echo ""
 }
