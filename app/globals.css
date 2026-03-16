@@ -332,6 +332,20 @@
   font-size: 0.85em;
 }
 
+/* Callout > [!TYPE] marker — inline on active */
+.tiptap [data-callout][data-active]::before {
+  content: "> [!" attr(data-callout-type) "]";
+  display: block;
+  font-family: var(--font-mono);
+  font-weight: 300;
+  color: var(--muted-foreground);
+  opacity: 0.5;
+  pointer-events: none;
+  font-size: 0.85em;
+  margin-bottom: 0.25em;
+  text-transform: uppercase;
+}
+
 /* Active node subtle highlight */
 .tiptap .is-active-node {
   border-radius: 0.25em;

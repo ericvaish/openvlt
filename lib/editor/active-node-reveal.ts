@@ -66,6 +66,17 @@ export const ActiveNodeReveal = Extension.create({
                 )
               }
 
+              if (nodeType === "callout") {
+                decorations.push(
+                  Decoration.node(pos, pos + node.nodeSize, {
+                    class: "is-active-node",
+                    "data-active": "true",
+                    "data-type": "callout",
+                    "data-callout-type": node.attrs.type || "note",
+                  })
+                )
+              }
+
               if (nodeType === "codeBlock") {
                 decorations.push(
                   Decoration.node(pos, pos + node.nodeSize, {

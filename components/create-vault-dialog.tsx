@@ -57,7 +57,11 @@ export function CreateVaultDialog({
       if (res.ok) {
         resetForm()
         setOpen(false)
-        onCreated?.()
+        if (onCreated) {
+          onCreated()
+        } else {
+          window.location.reload()
+        }
       } else {
         const data = await res.json()
         setError(data.error || "Failed to create vault")
