@@ -87,17 +87,18 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [ ] Uses tldraw's `editor.sendToBack()`, `editor.bringToFront()`, etc.
 - [ ] Toggle button in toolbar to show/hide layer panel
 
-## Phase 6: `.openvlt` ZIP Format
+## Phase 6: `.openvlt` ZIP Format ✅
 
-- [ ] Add `yauzl-promise` dependency for reading ZIP files
-- [ ] Create `openvlt-file.ts` service:
-  - `createOpenvltFile(canvasJson, textContent, assets)` — create ZIP
-  - `readOpenvltFile(filePath)` — extract canvas JSON and assets
-  - `updateOpenvltFile(filePath, canvasJson, textContent)` — rewrite ZIP
-- [ ] Migrate note CRUD to use `.openvlt` files for canvas notes
-- [ ] Text extraction from text-note shapes into `content.md` inside ZIP
-- [ ] Migration tool: convert existing `.canvas.json` → `.openvlt`
-- [ ] Update FTS index with extracted text content for search
+- [x] Add `adm-zip` dependency for reading ZIP files, `archiver` for writing
+- [x] Create `openvlt-file.ts` service:
+  - `createOpenvltBuffer(canvasJson)` — create ZIP buffer
+  - `readOpenvltFile(filePath)` — extract canvas JSON and text content
+  - `writeOpenvltFile(filePath, canvasJson)` — atomic write ZIP
+  - `extractTextFromCanvas(canvasJson)` — extract text from text-note shapes
+- [x] Migrate note CRUD to use `.openvlt` files for canvas notes
+- [x] Text extraction from text-note shapes into `content.md` inside ZIP
+- [x] DB migration v10: convert existing `.canvas.json` → `.openvlt`
+- [x] Update FTS index with extracted text content for search
 
 ## Phase 7: Stylus vs Finger Input ✅
 

@@ -478,6 +478,89 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 10,
+    description: "Migrate canvas notes from .canvas.json to .openvlt ZIP format",
+    up: (db) => {
+      const fs = require("fs") as typeof import("fs")
+      const path = require("path") as typeof import("path")
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const AdmZip = require("adm-zip")
+
+      // Find all canvas notes still using .canvas.json
+      const rows = db
+        .prepare("SELECT id, file_path, vault_id FROM notes WHERE note_type = 'canvas' AND file_path LIKE '%.canvas.json'")
+        .all() as { id: string; file_path: string; vault_id: string }[]
+
+      for (const row of rows) {
+        try {
+          // Resolve vault path
+          const vault = db
+            .prepare("SELECT path FROM vaults WHERE id = ?")
+            .get(row.vault_id) as { path: string } | undefined
+          if (!vault) continue
+
+          const vaultRoot = vault.path
+          const oldFullPath = path.resolve(vaultRoot, row.file_path)
+          if (!fs.existsSync(oldFullPath)) continue
+
+          // Read old JSON content
+          const jsonContent = fs.readFileSync(oldFullPath, "utf-8")
+          let data: { document?: object; settings?: object } = {}
+          try { data = JSON.parse(jsonContent) } catch { continue }
+
+          // Extract text for FTS
+          let textContent = ""
+          const store = (data.document as Record<string, unknown>)?.store ?? data.document ?? {}
+          if (typeof store === "object" && store !== null) {
+            const texts: string[] = []
+            for (const key of Object.keys(store)) {
+              const record = (store as Record<string, Record<string, unknown>>)[key]
+              if (record?.typeName === "shape" && record?.type === "text-note") {
+                const props = record.props as Record<string, unknown> | undefined
+                const content = props?.content
+                if (typeof content === "string" && content.trim()) {
+                  texts.push(content.trim())
+                }
+              }
+            }
+            textContent = texts.join("\n\n")
+          }
+
+          // Create .openvlt ZIP
+          const zip = new AdmZip()
+          zip.addFile("manifest.json", Buffer.from(JSON.stringify({
+            type: "openvlt-canvas",
+            version: 2,
+            createdAt: new Date().toISOString(),
+          })))
+          zip.addFile("document.json", Buffer.from(JSON.stringify(data.document ?? {})))
+          zip.addFile("settings.json", Buffer.from(JSON.stringify(data.settings ?? {})))
+          zip.addFile("content.md", Buffer.from(textContent))
+
+          // New file path
+          const newFilePath = row.file_path.replace(/\.canvas\.json$/, ".openvlt")
+          const newFullPath = path.resolve(vaultRoot, newFilePath)
+
+          // Write new file first, then remove old
+          zip.writeZip(newFullPath)
+          fs.unlinkSync(oldFullPath)
+
+          // Update DB
+          db.prepare("UPDATE notes SET file_path = ? WHERE id = ?").run(newFilePath, row.id)
+
+          // Update FTS with extracted text
+          const noteTitle = (db.prepare("SELECT title FROM notes WHERE id = ?").get(row.id) as { title: string } | undefined)?.title ?? ""
+          db.prepare(
+            `UPDATE notes_fts SET content = ?
+             WHERE rowid = (SELECT rowid FROM notes WHERE id = ?)`
+          ).run(textContent || noteTitle, row.id)
+        } catch {
+          // Skip individual note failures — don't block migration
+        }
+      }
+    },
+  },
 ]
 
 export function runMigrations(db: Database.Database) {

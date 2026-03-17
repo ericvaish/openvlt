@@ -58,7 +58,7 @@ import type { TreeNode } from "@/types/note"
 // ── Helpers ──
 
 function getNoteIcon(path: string) {
-  if (path.endsWith(".canvas.json")) return LayoutDashboardIcon
+  if (path.endsWith(".canvas.json") || path.endsWith(".openvlt")) return LayoutDashboardIcon
   if (path.endsWith(".excalidraw.json")) return PenLineIcon
   return FileTextIcon
 }

@@ -26,7 +26,8 @@ function isExcalidrawFile(metadata: NoteMetadata): boolean {
 function isCanvasFile(metadata: NoteMetadata): boolean {
   return (
     metadata.noteType === "canvas" ||
-    metadata.filePath.endsWith(".canvas.json")
+    metadata.filePath.endsWith(".canvas.json") ||
+    metadata.filePath.endsWith(".openvlt")
   )
 }
 
