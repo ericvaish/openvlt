@@ -16,6 +16,17 @@ import {
 } from "@/lib/canvas/shapes/text-note-shape"
 import { TextNoteTool } from "@/lib/canvas/tools/text-note-tool"
 import { CanvasToolbarInline } from "@/components/canvas/canvas-toolbar-inline"
+import { CanvasBackground } from "@/components/canvas/canvas-background"
+import {
+  type PageSizeId,
+  type BackgroundPattern,
+  PAGE_SIZES,
+  PAGE_MARGIN_LEFT,
+  PAGE_MARGIN_TOP,
+  PAGE_GAP,
+  getCanvasSettings,
+  saveCanvasSettings,
+} from "@/lib/canvas/page-config"
 
 const customShapeUtils = [TextNoteShapeUtil]
 const customTools = [TextNoteTool]
@@ -66,11 +77,22 @@ function CanvasSkeleton() {
   )
 }
 
+export interface CanvasEditorState {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  editor: any
+  pageSize: PageSizeId
+  background: BackgroundPattern
+  pageCount: number
+  onPageSizeChange: (size: PageSizeId) => void
+  onBackgroundChange: (bg: BackgroundPattern) => void
+  onAddPage: () => void
+  onRemovePage: () => void
+}
+
 interface CanvasEditorProps {
   noteId: string
   initialData: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onEditorReady?: (editor: any) => void
+  onEditorReady?: (state: CanvasEditorState) => void
 }
 
 export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEditorProps) {
@@ -99,14 +121,43 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
     (editor: any) => {
       editorRef.current = editor
 
+      // Enable grid so our custom background component renders
+      editor.updateInstanceState({ isGridMode: true })
+
       // Default to draw tool — finger auto-switches to hand for panning
       editor.setCurrentTool("draw")
+
+      // Set initial camera bounds based on page size
+      const settings = getCanvasSettings()
+      const pageDef = PAGE_SIZES.find(p => p.id === settings.pageSize)
+      if (pageDef && pageDef.width > 0) {
+        // No camera constraints — free scrolling, wide zoom range
+        editor.setCameraOptions({
+          constraints: undefined,
+          zoomSteps: [0.1, 0.25, 0.5, 1, 2, 4, 8],
+        })
+      } else {
+        editor.setCameraOptions({
+          constraints: undefined,
+          zoomSteps: [0.1, 0.25, 0.5, 1, 2, 4, 8],
+        })
+      }
 
       // Auto-mode: finger = pan, pen = active tool
       // Intercept single-finger touch for manual panning.
       // Let multi-touch (pinch-to-zoom) pass through to tldraw.
       // Pen events always pass through to tldraw.
+      // Clean up previous listeners if StrictMode re-mounts
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const prevAc = (window as any).__canvasTouchAc as AbortController | undefined
+      if (prevAc) prevAc.abort()
+      const ac = new AbortController()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__canvasTouchAc = ac
+      const signal = ac.signal
+
       requestAnimationFrame(() => {
+        if (signal.aborted) return
         const container = document.querySelector(".canvas-editor-wrapper .tl-container")
         if (!container) return
 
@@ -127,6 +178,8 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         let pinchStartZoom = 1
         let pinchMidX = 0
         let pinchMidY = 0
+        let pinchSbX = 0
+        let pinchSbY = 0
 
         // Block ALL touch events from reaching tldraw — we handle them ourselves
         container.addEventListener("pointerdown", (e: Event) => {
@@ -136,17 +189,17 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
 
           touchPointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY })
           activeTouchCount = touchPointers.size
+          const cam = editor.getCamera()
 
           if (activeTouchCount === 1) {
             isTouchPanning = true
             isPinching = false
             touchStartX = pe.clientX
             touchStartY = pe.clientY
-            const cam = editor.getCamera()
             cameraStartX = cam.x
             cameraStartY = cam.y
+            addDebugRef.current(`PAN n=1 cam=${cam.x.toFixed(0)},${cam.y.toFixed(0)} z=${(cam.z??1).toFixed(2)}`)
           } else if (activeTouchCount === 2) {
-            // Start pinch-to-zoom
             isTouchPanning = false
             isPinching = true
             const pts = [...touchPointers.values()]
@@ -154,11 +207,15 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
             pinchStartZoom = editor.getZoomLevel()
             pinchMidX = (pts[0].x + pts[1].x) / 2
             pinchMidY = (pts[0].y + pts[1].y) / 2
-            const cam = editor.getCamera()
+            // Save screenBounds at pinch start — use throughout the gesture
+            const sb = editor.getViewportScreenBounds()
+            pinchSbX = sb.x
+            pinchSbY = sb.y
             cameraStartX = cam.x
             cameraStartY = cam.y
+            addDebugRef.current(`PINCH dist=${pinchStartDist.toFixed(0)} z=${pinchStartZoom.toFixed(2)} sb=${sb.x.toFixed(0)},${sb.y.toFixed(0)}`)
           }
-        }, { capture: true })
+        }, { capture: true, signal })
 
         container.addEventListener("pointermove", (e: Event) => {
           const pe = e as PointerEvent
@@ -171,31 +228,26 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
             const zoom = editor.getZoomLevel()
             const dx = (pe.clientX - touchStartX) / zoom
             const dy = (pe.clientY - touchStartY) / zoom
-            editor.setCamera({ x: cameraStartX + dx, y: cameraStartY + dy })
+            editor.setCamera({ x: cameraStartX + dx, y: cameraStartY + dy, z: zoom })
           } else if (isPinching && touchPointers.size === 2) {
             const pts = [...touchPointers.values()]
             const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)
             const newZoom = Math.min(8, Math.max(0.1, pinchStartZoom * (dist / pinchStartDist)))
-            const currentMidX = (pts[0].x + pts[1].x) / 2
-            const currentMidY = (pts[0].y + pts[1].y) / 2
+            const curMidX = (pts[0].x + pts[1].x) / 2
+            const curMidY = (pts[0].y + pts[1].y) / 2
 
-            // tldraw camera model:
-            //   pageX = (screenX - screenBounds.x) / zoom - camera.x
-            //   camera.x = (screenX - screenBounds.x) / zoom - pageX
-            //
-            // The page point under the original pinch midpoint must stay
-            // under the current midpoint after zoom changes.
-            const sb = editor.getViewportScreenBounds()
-            const anchorPageX = (pinchMidX - sb.x) / pinchStartZoom - cameraStartX
-            const anchorPageY = (pinchMidY - sb.y) / pinchStartZoom - cameraStartY
+            // Anchor: page point under original pinch midpoint
+            const anchorX = (pinchMidX - pinchSbX) / pinchStartZoom - cameraStartX
+            const anchorY = (pinchMidY - pinchSbY) / pinchStartZoom - cameraStartY
 
+            // New camera: keep anchor under current midpoint
             editor.setCamera({
-              x: (currentMidX - sb.x) / newZoom - anchorPageX,
-              y: (currentMidY - sb.y) / newZoom - anchorPageY,
+              x: (curMidX - pinchSbX) / newZoom - anchorX,
+              y: (curMidY - pinchSbY) / newZoom - anchorY,
               z: newZoom,
             })
           }
-        }, { capture: true })
+        }, { capture: true, signal })
 
         container.addEventListener("pointerup", (e: Event) => {
           const pe = e as PointerEvent
@@ -235,11 +287,24 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
 
           touchPointers.delete(pe.pointerId)
           activeTouchCount = touchPointers.size
+          const cam = editor.getCamera()
+
           if (activeTouchCount === 0) {
+            addDebugRef.current(`ALL UP cam=${cam.x.toFixed(0)},${cam.y.toFixed(0)} z=${(cam.z??1).toFixed(2)}`)
             isTouchPanning = false
             isPinching = false
+          } else if (activeTouchCount === 1 && isPinching) {
+            // Pinch ended, one finger remains — start panning from current state
+            isPinching = false
+            isTouchPanning = true
+            const remaining = [...touchPointers.values()][0]
+            touchStartX = remaining.x
+            touchStartY = remaining.y
+            cameraStartX = cam.x
+            cameraStartY = cam.y
+            addDebugRef.current(`PINCH→PAN cam=${cam.x.toFixed(0)},${cam.y.toFixed(0)} z=${(cam.z??1).toFixed(2)}`)
           }
-        }, { capture: true })
+        }, { capture: true, signal })
 
         container.addEventListener("pointercancel", (e: Event) => {
           const pe = e as PointerEvent
@@ -250,7 +315,26 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
             isTouchPanning = false
             isPinching = false
           }
-        }, { capture: true })
+        }, { capture: true, signal })
+
+        // Block Safari gesture events — prevent double-zoom from Safari's own gestures
+        container.addEventListener("gesturestart", (e: Event) => {
+          e.preventDefault()
+          e.stopPropagation()
+        }, { capture: true, signal })
+        container.addEventListener("gesturechange", (e: Event) => {
+          e.preventDefault()
+          e.stopPropagation()
+        }, { capture: true, signal })
+        container.addEventListener("gestureend", (e: Event) => {
+          e.preventDefault()
+          e.stopPropagation()
+        }, { capture: true, signal })
+        // Block pinch-originated wheel events
+        container.addEventListener("wheel", (e: Event) => {
+          const we = e as WheelEvent
+          if (we.ctrlKey) { e.preventDefault(); e.stopPropagation() }
+        }, { capture: true, passive: false, signal } as AddEventListenerOptions)
 
         // Double-click with mouse/pen → create text-note
         container.addEventListener("dblclick", (e: Event) => {
@@ -264,20 +348,35 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
           const id = createShapeId()
           const defaults = getTextNoteDefaults()
           editor.createShape({
-            id,
-            type: "text-note",
-            x: point.x,
-            y: point.y,
+            id, type: "text-note", x: point.x, y: point.y,
             props: { w: 300, h: 30, content: "", ...defaults },
           })
           editor.setCurrentTool("select")
           editor.select(id)
           editor.setEditingShape(id)
-        })
+        }, { signal })
       })
 
       // Notify parent so toolbar can be rendered in the header
-      onEditorReady?.(editor)
+      onEditorReady?.({
+        editor,
+        pageSize: getCanvasSettings().pageSize,
+        background: getCanvasSettings().background,
+        pageCount: getCanvasSettings().pageCount,
+        onPageSizeChange: handlePageSizeChange,
+        onBackgroundChange: handleBackgroundChange,
+        onAddPage: handleAddPage,
+        onRemovePage: handleRemovePage,
+      })
+
+      // Track camera for page button overlay
+      editor.store.listen(
+        () => {
+          const cam = editor.getCamera()
+          setCamera({ x: cam.x, y: cam.y, z: cam.z ?? 1 })
+        },
+        { source: "all", scope: "session" }
+      )
 
       // Track text-note selection for the style bar
       function updateSelectedTextNote() {
@@ -360,10 +459,88 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
     []
   )
 
+  // Page and background settings
+  const [pageSize, setPageSize] = React.useState<PageSizeId>(() => getCanvasSettings().pageSize)
+  const [background, setBackground] = React.useState<BackgroundPattern>(() => getCanvasSettings().background)
+  const [pageCount, setPageCount] = React.useState(() => getCanvasSettings().pageCount)
+
+  const handlePageSizeChange = React.useCallback((size: PageSizeId) => {
+    setPageSize(size)
+    saveCanvasSettings({ pageSize: size, background, pageCount })
+
+    // Update camera bounds
+    if (editorRef.current) {
+      const pageDef = PAGE_SIZES.find(p => p.id === size)
+      if (pageDef && pageDef.width > 0) {
+        editorRef.current.setCameraOptions({
+          constraints: {
+            bounds: { x: 0, y: 0, w: pageDef.width, h: pageDef.height },
+            behavior: { x: "inside", y: "inside" },
+            padding: { x: 0, y: 0 },
+            origin: { x: 0, y: 0 },
+          },
+        })
+      } else {
+        // Infinite: only restrict top-left
+        editorRef.current.setCameraOptions({
+          constraints: {
+            bounds: { x: 0, y: 0, w: 10000, h: 10000 },
+            behavior: { x: "inside", y: "inside" },
+            padding: { x: 0, y: 0 },
+            origin: { x: 0, y: 0 },
+          },
+        })
+      }
+    }
+  }, [background])
+
+  const handleBackgroundChange = React.useCallback((bg: BackgroundPattern) => {
+    setBackground(bg)
+    saveCanvasSettings({ pageSize, background: bg, pageCount })
+  }, [pageSize, pageCount])
+
+  const handleAddPage = React.useCallback(() => {
+    const newCount = pageCount + 1
+    setPageCount(newCount)
+    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+  }, [pageSize, background, pageCount])
+
+  const handleAddPageAt = React.useCallback((_index: number) => {
+    // For now just add a page (position doesn't matter since pages are identical)
+    const newCount = pageCount + 1
+    setPageCount(newCount)
+    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+  }, [pageSize, background, pageCount])
+
+  const handleRemovePage = React.useCallback(() => {
+    if (pageCount <= 1) return
+    const newCount = pageCount - 1
+    setPageCount(newCount)
+    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+  }, [pageSize, background, pageCount])
+
+  // Custom grid component that uses our page/background settings
+  const components = React.useMemo(() => ({
+    Grid: (props: { x: number; y: number; z: number; size: number }) => (
+      <CanvasBackground {...props} pageSize={pageSize} background={background} pageCount={pageCount} />
+    ),
+  }), [pageSize, background, pageCount])
+
   // Track selected text-note shape for the style bar
   const [selectedTextNote, setSelectedTextNote] =
     React.useState<TextNoteShape | null>(null)
   const [defaultSaved, setDefaultSaved] = React.useState(false)
+  const [camera, setCamera] = React.useState({ x: 0, y: 0, z: 1 })
+  const [debugLog, setDebugLog] = React.useState<string[]>([])
+  const debugLogRef = React.useRef<string[]>([])
+  const addDebugRef = React.useRef((msg: string) => {
+    debugLogRef.current = [...debugLogRef.current.slice(-20), msg]
+    setDebugLog([...debugLogRef.current])
+  })
+  const clearDebug = React.useCallback(() => {
+    debugLogRef.current = []
+    setDebugLog([])
+  }, [])
 
   const updateTextNoteStyle = React.useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -489,12 +666,72 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         </div>
       )}
 
+      <div className="relative h-full w-full overflow-hidden">
+      {/* Add page buttons — overlay for fixed-size pages */}
+      {pageSize !== "infinite" && (() => {
+        const pd = PAGE_SIZES.find(p => p.id === pageSize)
+        if (!pd || pd.width === 0) return null
+        const buttons: { key: string; sx: number; sy: number }[] = []
+        const btnPageX = pd.width / 2
+
+        for (let i = 0; i <= pageCount; i++) {
+          let btnPageY: number
+          if (i === 0) {
+            // Before first page
+            btnPageY = -PAGE_GAP / 2
+          } else {
+            // After page i-1 (in the gap, or after last page)
+            btnPageY = i * pd.height + (i - 0.5) * PAGE_GAP
+          }
+          buttons.push({
+            key: `add-${i}`,
+            sx: (btnPageX + camera.x) * camera.z,
+            sy: (btnPageY + camera.y) * camera.z,
+          })
+        }
+
+        return buttons.map(btn => (
+          <button
+            key={btn.key}
+            onClick={() => handleAddPage()}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              left: btn.sx - Math.max(6, 14 * camera.z),
+              top: btn.sy - Math.max(6, 14 * camera.z),
+              width: Math.max(12, 28 * camera.z),
+              height: Math.max(12, 28 * camera.z),
+              borderRadius: "50%",
+              border: `${Math.max(0.5, 1.5 * camera.z)}px solid #aaa`,
+              background: "transparent",
+              color: "#aaa",
+              fontSize: Math.max(8, 18 * camera.z),
+              lineHeight: "1",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1,
+              transition: "color 0.15s, border-color 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#666"; e.currentTarget.style.borderColor = "#666" }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "#aaa"; e.currentTarget.style.borderColor = "#aaa" }}
+            title="Add page"
+          >
+            +
+          </button>
+        ))
+      })()}
+
       {saving && (
         <div className="absolute right-4 top-2 z-30 text-xs text-muted-foreground">
           Saving...
         </div>
       )}
       <style jsx global>{`
+        .canvas-editor-wrapper .tl-grid {
+          contain: none !important;
+        }
         .canvas-editor-wrapper .tlui-debug-panel {
           display: none !important;
         }
@@ -592,21 +829,56 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
           font-style: italic;
         }
       `}</style>
-      <div className="h-full w-full">
         <TldrawComponent
           snapshot={snapshot}
           shapeUtils={customShapeUtils}
           tools={customTools}
           overrides={overrides}
+          components={components}
           onMount={handleMount}
           hideUi
           inferDarkMode={false}
           forceMobile={false}
+          initialState="select"
           options={{
             maxPages: 1,
             createTextOnCanvasDoubleClick: false,
           }}
         />
+      </div>
+      {/* Debug overlay — shows touch event log on screen */}
+      <div style={{
+        position: "absolute",
+        bottom: 8,
+        left: 8,
+        background: "rgba(0,0,0,0.8)",
+        color: "#0f0",
+        fontSize: 11,
+        fontFamily: "monospace",
+        padding: "6px 10px",
+        borderRadius: 8,
+        zIndex: 99999,
+        pointerEvents: "auto",
+        maxWidth: "95%",
+        maxHeight: "40vh",
+        overflowY: "auto",
+        lineHeight: 1.5,
+        minWidth: 200,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+          <span style={{ color: "#888", fontSize: 9 }}>Touch Debug ({debugLog.length})</span>
+          <button
+            onClick={clearDebug}
+            style={{ background: "none", border: "1px solid #555", color: "#f88", fontSize: 9, padding: "1px 6px", borderRadius: 3, cursor: "pointer" }}
+          >
+            Clear
+          </button>
+        </div>
+        {debugLog.length === 0 ? (
+          <div style={{ color: "#555" }}>No events yet</div>
+        ) : (
+          debugLog.map((line, i) => <div key={i}>{line}</div>)
+        )}
       </div>
     </div>
   )

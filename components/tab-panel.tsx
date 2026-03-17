@@ -4,7 +4,7 @@ import * as React from "react"
 import { NoteHeader } from "@/components/note-header"
 import { NoteEditor } from "@/components/note-editor"
 import { ExcalidrawEditor } from "@/components/excalidraw-editor"
-import { CanvasEditor } from "@/components/canvas-editor"
+import { CanvasEditor, type CanvasEditorState } from "@/components/canvas-editor"
 import { CanvasToolbarInline } from "@/components/canvas/canvas-toolbar-inline"
 import { LockPrompt } from "@/components/lock-dialog"
 import type { NoteMetadata } from "@/types"
@@ -35,8 +35,7 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
   const [content, setContent] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
   const fetchedRef = React.useRef(false)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [canvasEditor, setCanvasEditor] = React.useState<any>(null)
+  const [canvasState, setCanvasState] = React.useState<CanvasEditorState | null>(null)
 
   React.useEffect(() => {
     if (fetchedRef.current) return
@@ -74,8 +73,17 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
   const isCanvas = isCanvasFile(metadata)
   const isLocked = metadata.isLocked
 
-  const canvasToolbar = isCanvas && canvasEditor ? (
-    <CanvasToolbarInline editor={canvasEditor} />
+  const canvasToolbar = isCanvas && canvasState ? (
+    <CanvasToolbarInline
+      editor={canvasState.editor}
+      pageSize={canvasState.pageSize}
+      background={canvasState.background}
+      pageCount={canvasState.pageCount}
+      onPageSizeChange={canvasState.onPageSizeChange}
+      onBackgroundChange={canvasState.onBackgroundChange}
+      onAddPage={canvasState.onAddPage}
+      onRemovePage={canvasState.onRemovePage}
+    />
   ) : null
 
   // Locked note: show password prompt, then render editor with decrypted content
@@ -92,7 +100,7 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
     <div className={`flex h-full min-w-0 flex-col overflow-hidden ${active ? "" : "hidden"}`}>
       <NoteHeader note={metadata} isSplit={isSplit} toolbarSlot={canvasToolbar} />
       {isCanvas ? (
-        <CanvasEditor noteId={metadata.id} initialData={content} onEditorReady={setCanvasEditor} />
+        <CanvasEditor noteId={metadata.id} initialData={content} onEditorReady={setCanvasState} />
       ) : isExcalidraw ? (
         <ExcalidrawEditor noteId={metadata.id} initialData={content} />
       ) : (
