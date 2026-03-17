@@ -108,6 +108,7 @@ export class HandwriteShapeUtil extends ShapeUtil<HandwriteShape> {
 
   override canEdit() { return false }
   override canResize() { return false }
+  override hideRotateHandle() { return true }
   override hideSelectionBoundsFg() { return true }
 
   override component(shape: HandwriteShape) {

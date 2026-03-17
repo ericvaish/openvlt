@@ -18,6 +18,7 @@ import {
   ChevronUpIcon,
   GridIcon,
   PaletteIcon,
+  LassoIcon,
 } from "lucide-react"
 import {
   PAGE_SIZES,
@@ -120,6 +121,13 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
   const [currentCustomSpacing, setCurrentCustomSpacing] = React.useState(customSpacing)
   const [currentPressure, setCurrentPressure] = React.useState(pressureSensitivity)
   const [currentDrawWithFinger, setCurrentDrawWithFinger] = React.useState(drawWithFinger)
+  const [currentSnapToShape, setCurrentSnapToShape] = React.useState(() => {
+    try {
+      const stored = localStorage.getItem("openvlt:canvas-settings")
+      if (stored) return JSON.parse(stored).snapToShape === true
+    } catch {}
+    return false
+  })
 
   if (!editor) return null
 
@@ -171,6 +179,9 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
       </button>
       <button onClick={() => selectTool("hand")} className={btn(currentTool === "hand")} title="Hand (H)">
         <HandIcon className="size-3.5" />
+      </button>
+      <button onClick={() => selectTool("lasso")} className={btn(currentTool === "lasso")} title="Lasso Select (L)">
+        <LassoIcon className="size-3.5" />
       </button>
 
       <div className="mx-0.5 h-4 w-px bg-border" />
@@ -328,6 +339,50 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
                     position: "absolute",
                     top: 2,
                     left: currentDrawWithFinger ? 18 : 2,
+                    width: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    background: "white",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
+            {/* Snap to shape toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-medium uppercase text-muted-foreground">Snap to shape</span>
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  const next = !currentSnapToShape
+                  setCurrentSnapToShape(next)
+                  try {
+                    const stored = localStorage.getItem("openvlt:canvas-settings")
+                    const settings = stored ? JSON.parse(stored) : {}
+                    settings.snapToShape = next
+                    localStorage.setItem("openvlt:canvas-settings", JSON.stringify(settings))
+                  } catch {}
+                }}
+                style={{
+                  position: "relative",
+                  width: 36,
+                  height: 20,
+                  borderRadius: 10,
+                  border: "none",
+                  background: currentSnapToShape ? "var(--color-primary, #3b82f6)" : "#71717a",
+                  cursor: "pointer",
+                  padding: 0,
+                  transition: "background 0.2s",
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 2,
+                    left: currentSnapToShape ? 18 : 2,
                     width: 16,
                     height: 16,
                     borderRadius: 8,

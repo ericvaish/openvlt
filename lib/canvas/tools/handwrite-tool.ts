@@ -1,5 +1,6 @@
 import { StateNode, createShapeId } from "tldraw"
 import { DefaultColorStyle, DefaultSizeStyle } from "@tldraw/tlschema"
+import { recognizeShape } from "../shape-recognition"
 import "../shapes/handwrite-shape"
 
 export class HandwriteTool extends StateNode {
@@ -73,6 +74,17 @@ export class HandwriteTool extends StateNode {
       this.canvas = null
       this.ctx = null
     }
+  }
+
+  private isSnapToShapeEnabled(): boolean {
+    try {
+      const stored = localStorage.getItem("openvlt:canvas-settings")
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        return parsed.snapToShape === true
+      }
+    } catch {}
+    return false
   }
 
   private isPressureEnabled(): boolean {
@@ -229,7 +241,57 @@ export class HandwriteTool extends StateNode {
       }
     } catch {}
 
-    // Create the final shape
+    // Try shape recognition if snap-to-shape is enabled
+    if (this.isSnapToShapeEnabled() && this.points.length >= 5) {
+      const absPoints = this.points.map(p => ({ x: p.x + this.originX, y: p.y + this.originY }))
+      const recognized = recognizeShape(absPoints)
+
+      if (recognized) {
+        const { type, bounds } = recognized
+
+        if (type === "line") {
+          // Create an arrow shape (simpler API than line) from first to last point
+          const first = absPoints[0]
+          const last = absPoints[absPoints.length - 1]
+          this.editor.createShape({
+            id: this.shapeId,
+            type: "arrow",
+            x: first.x,
+            y: first.y,
+            props: {
+              start: { x: 0, y: 0 },
+              end: { x: last.x - first.x, y: last.y - first.y },
+              arrowheadStart: "none",
+              arrowheadEnd: "none",
+            },
+          } as Parameters<typeof this.editor.createShape>[0])
+        } else {
+          // Create a geo shape (rectangle, ellipse, triangle)
+          const geoMap = { rectangle: "rectangle", ellipse: "ellipse", triangle: "triangle" } as const
+          try {
+            const { GeoShapeGeoStyle } = require("@tldraw/tlschema")
+            this.editor.setStyleForNextShapes(GeoShapeGeoStyle, geoMap[type])
+          } catch {}
+          this.editor.createShape({
+            id: this.shapeId,
+            type: "geo",
+            x: bounds.x,
+            y: bounds.y,
+            props: {
+              w: Math.max(20, bounds.w),
+              h: Math.max(20, bounds.h),
+              geo: geoMap[type],
+            },
+          })
+        }
+
+        this.shapeId = "" as ReturnType<typeof createShapeId>
+        this.points = []
+        return
+      }
+    }
+
+    // Create the final handwrite shape (no recognition match)
     this.editor.createShape({
       id: this.shapeId,
       type: "handwrite",

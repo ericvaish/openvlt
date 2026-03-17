@@ -19,6 +19,7 @@ import {
 import { HandwriteShapeUtil } from "@/lib/canvas/shapes/handwrite-shape"
 import { TextNoteTool } from "@/lib/canvas/tools/text-note-tool"
 import { HandwriteTool } from "@/lib/canvas/tools/handwrite-tool"
+import { LassoTool } from "@/lib/canvas/tools/lasso-tool"
 import { CanvasToolbarInline } from "@/components/canvas/canvas-toolbar-inline"
 import { CanvasBackground } from "@/components/canvas/canvas-background"
 import { InkLayer, type InkLayerHandle } from "@/components/canvas/ink-layer"
@@ -37,7 +38,7 @@ import {
 } from "@/lib/canvas/page-config"
 
 const customShapeUtils = [TextNoteShapeUtil, HandwriteShapeUtil]
-const customTools = [TextNoteTool, HandwriteTool]
+const customTools = [TextNoteTool, HandwriteTool, LassoTool]
 
 const TEXT_NOTE_DEFAULTS_KEY = "openvlt:text-note-defaults"
 

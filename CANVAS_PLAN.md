@@ -128,17 +128,17 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [ ] Fix text block rendering resolution (tldraw CSS transform limitation)
 - [ ] Investigate rendering text blocks as HTML overlay for crisp text
 
-## Phase 8: Snap-to-Shape + Lasso Select
+## Phase 8: Snap-to-Shape + Lasso Select ✅
 
-- [ ] Shape recognition on stroke completion:
+- [x] Shape recognition on stroke completion:
   - Detect approximate circles, rectangles, triangles, lines
   - Confidence threshold → replace freehand stroke with clean tldraw geo shape
-- [ ] Toggle snap-to-shape in toolbar/settings
-- [ ] Lasso select tool:
-  - Draw freeform selection loop
-  - Select all shapes inside the lasso polygon
-  - Works across layers (text AND drawings)
-- [ ] Selected content can be moved, copied, resized, deleted as group
+- [x] Toggle snap-to-shape in toolbar/settings (stroke menu toggle)
+- [x] Lasso select tool:
+  - Draw freeform selection loop with dashed outline + blue fill
+  - Select all shapes inside the lasso polygon (ray casting algorithm)
+  - Works across all shape types (handwrite, text-note, geo, etc.)
+- [x] Selected content can be moved, copied, resized, deleted as group (tldraw built-in)
 
 ## Phase 9: Eraser Modes
 
