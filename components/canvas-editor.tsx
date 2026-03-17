@@ -19,7 +19,7 @@ import { TextNoteTool } from "@/lib/canvas/tools/text-note-tool"
 import { HandwriteTool } from "@/lib/canvas/tools/handwrite-tool"
 import { CanvasToolbarInline } from "@/components/canvas/canvas-toolbar-inline"
 import { CanvasBackground } from "@/components/canvas/canvas-background"
-import { InkLayer } from "@/components/canvas/ink-layer"
+import { InkLayer, type InkLayerHandle } from "@/components/canvas/ink-layer"
 import {
   type PageSizeId,
   type BackgroundPattern,
@@ -236,6 +236,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
             const dx = (pe.clientX - touchStartX) / zoom
             const dy = (pe.clientY - touchStartY) / zoom
             editor.setCamera({ x: cameraStartX + dx, y: cameraStartY + dy, z: zoom })
+            inkLayerRef.current?.redraw()
           } else if (isPinching && touchPointers.size === 2) {
             const pts = [...touchPointers.values()]
             const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)
@@ -253,6 +254,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
               y: (curMidY - pinchSbY) / newZoom - anchorY,
               z: newZoom,
             })
+            inkLayerRef.current?.redraw()
           }
         }, { capture: true, signal })
 
@@ -563,6 +565,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
   const [defaultSaved, setDefaultSaved] = React.useState(false)
   const [camera, setCamera] = React.useState({ x: 0, y: 0, z: 1 })
   const [isDrawing, setIsDrawing] = React.useState(false)
+  const inkLayerRef = React.useRef<InkLayerHandle>(null)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const addDebugRef = React.useRef((_msg: string) => {})
 
@@ -917,7 +920,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
           }}
         />
       {/* High-DPI ink layer — renders handwrite strokes at native screen resolution */}
-      <InkLayer editor={editorRef.current} camera={camera} isDrawing={isDrawing} />
+      <InkLayer ref={inkLayerRef} editor={editorRef.current} isDrawing={isDrawing} />
       {/* Page mask overlay — covers areas outside pages to hide out-of-bounds content */}
       {pageSize !== "infinite" && (() => {
         const pd = PAGE_SIZES.find(p => p.id === pageSize)
