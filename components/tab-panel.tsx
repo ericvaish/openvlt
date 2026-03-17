@@ -38,6 +38,20 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
   const [error, setError] = React.useState(false)
   const fetchedRef = React.useRef(false)
   const [canvasState, setCanvasState] = React.useState<CanvasEditorState | null>(null)
+  const [historyOpen, setHistoryOpen] = React.useState(false)
+  const [historyFolderId, setHistoryFolderId] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.noteId === noteId) {
+        setHistoryOpen((prev) => !prev)
+        setHistoryFolderId(detail?.folderId ?? null)
+      }
+    }
+    window.addEventListener("openvlt:toggle-history", handler)
+    return () => window.removeEventListener("openvlt:toggle-history", handler)
+  }, [noteId])
 
   React.useEffect(() => {
     if (fetchedRef.current) return
@@ -111,7 +125,7 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
   }
 
   return (
-    <div className={`flex h-full min-w-0 flex-col overflow-hidden ${active ? "" : "hidden"}`}>
+    <div className={`relative flex h-full min-w-0 flex-col overflow-hidden ${active ? "" : "hidden"}`}>
       <NoteHeader note={metadata} isSplit={isSplit} pane={isSplit ? "split" : "main"} toolbarSlot={canvasToolbar} />
       {!isCanvas && !isExcalidraw && <NoteProperties noteId={metadata.id} />}
       {isCanvas ? (

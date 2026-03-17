@@ -151,13 +151,16 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
   - Preserves remaining segments with original color/size/pressure
 - [x] Eraser dropdown in toolbar to switch between stroke/pixel mode
 
-## Phase 10: Version History for Canvas
+## Phase 10: Version History for Canvas ✅
 
-- [ ] Canvas JSON snapshots in existing TimeMachine version system
-- [ ] Existing `saveVersionGrouped()` works for canvas content (JSON string)
-- [ ] Read-only canvas preview component for historical versions
-- [ ] Integrate canvas preview into TimeMachine panel
-- [ ] Detect canvas note type in version diff view
+- [x] Canvas JSON snapshots in existing TimeMachine version system (already works via saveVersionGrouped)
+- [x] Read-only canvas preview component (renders strokes, text, geo shapes on canvas element)
+- [x] Auto-fit zoom to show all content with padding
+- [x] Highlighter strokes render with correct opacity in preview
+- [x] Shape count summary below preview (strokes, text blocks, shapes)
+- [x] Integrated into TimeMachine panel — auto-detects canvas versions
+- [x] Diff tab hidden for canvas notes (JSON diff not useful)
+- [x] Restore button works (restores canvas JSON to current version)
 
 ---
 

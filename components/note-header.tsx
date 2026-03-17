@@ -28,6 +28,7 @@ import { LockDialog } from "@/components/lock-dialog"
 import { addBookmark } from "@/components/bookmarks-panel"
 import { IconPicker } from "@/components/icon-picker"
 import { toast } from "sonner"
+import { TimeMachinePanel } from "@/components/history/time-machine-panel"
 import type { NoteMetadata } from "@/types/note"
 
 function Tip({ label, children }: { label: string; children: React.ReactNode }) {
@@ -67,6 +68,37 @@ export function NoteHeader({ note, isSplit = false, pane = "main", toolbarSlot }
   )
   const [coverHovered, setCoverHovered] = React.useState(false)
   const [moreOpen, setMoreOpen] = React.useState(false)
+  const [canvasHistoryOpen, setCanvasHistoryOpen] = React.useState(false)
+  const historyRef = React.useRef<HTMLDivElement>(null)
+
+  // Close canvas history on outside click
+  React.useEffect(() => {
+    if (!canvasHistoryOpen) return
+    const handler = (e: MouseEvent) => {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setCanvasHistoryOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    document.addEventListener("touchstart", handler as EventListener)
+    return () => {
+      document.removeEventListener("mousedown", handler)
+      document.removeEventListener("touchstart", handler as EventListener)
+    }
+  }, [canvasHistoryOpen])
+
+  // Listen for toggle-history event (from 3-dot menu or keyboard shortcut)
+  React.useEffect(() => {
+    if (note.noteType !== "canvas") return
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.noteId === note.id) {
+        setCanvasHistoryOpen(prev => !prev)
+      }
+    }
+    window.addEventListener("openvlt:toggle-history", handler)
+    return () => window.removeEventListener("openvlt:toggle-history", handler)
+  }, [note.id, note.noteType])
   const coverInputRef = React.useRef<HTMLInputElement>(null)
   const moreRef = React.useRef<HTMLDivElement>(null)
 
@@ -395,6 +427,21 @@ export function NoteHeader({ note, isSplit = false, pane = "main", toolbarSlot }
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Canvas history dropdown */}
+        {note.noteType === "canvas" && canvasHistoryOpen && (
+          <div ref={historyRef} className="fixed right-0 z-50 shadow-lg" style={{ top: 80, bottom: 0 }}>
+            <TimeMachinePanel
+              noteId={note.id}
+              folderId={note.parentId}
+              onClose={() => setCanvasHistoryOpen(false)}
+              onRestored={() => {
+                setCanvasHistoryOpen(false)
+                window.location.reload()
+              }}
+            />
           </div>
         )}
 

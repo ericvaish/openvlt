@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { RotateCcwIcon } from "lucide-react"
+import { CanvasPreview } from "@/components/canvas/canvas-preview"
 import type { DiffLine } from "@/types"
 
 interface VersionPreviewProps {
@@ -113,20 +114,22 @@ export function VersionPreview({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-md border">
-            <button
-              onClick={() => setMode("preview")}
-              className={`px-2 py-1 text-xs ${mode === "preview" ? "bg-muted font-medium" : "text-muted-foreground"}`}
-            >
-              Preview
-            </button>
-            <button
-              onClick={() => setMode("diff")}
-              className={`px-2 py-1 text-xs ${mode === "diff" ? "bg-muted font-medium" : "text-muted-foreground"}`}
-            >
-              Diff
-            </button>
-          </div>
+          {!isCanvasContent(version.content) && (
+            <div className="flex rounded-md border">
+              <button
+                onClick={() => setMode("preview")}
+                className={`px-2 py-1 text-xs ${mode === "preview" ? "bg-muted font-medium" : "text-muted-foreground"}`}
+              >
+                Preview
+              </button>
+              <button
+                onClick={() => setMode("diff")}
+                className={`px-2 py-1 text-xs ${mode === "diff" ? "bg-muted font-medium" : "text-muted-foreground"}`}
+              >
+                Diff
+              </button>
+            </div>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -141,9 +144,18 @@ export function VersionPreview({
 
       {/* Content */}
       {mode === "preview" ? (
-        <div className="max-h-[60vh] overflow-auto rounded-md border bg-muted/30 p-4">
-          <pre className="whitespace-pre-wrap text-sm">{version.content}</pre>
-        </div>
+        isCanvasContent(version.content) ? (
+          <div className="flex flex-col items-center gap-2 rounded-md border bg-muted/30 p-2">
+            <CanvasPreview content={version.content} width={280} height={200} />
+            <p className="text-[10px] text-muted-foreground">
+              {getCanvasShapeCount(version.content)}
+            </p>
+          </div>
+        ) : (
+          <div className="max-h-[60vh] overflow-auto rounded-md border bg-muted/30 p-4">
+            <pre className="whitespace-pre-wrap text-sm">{version.content}</pre>
+          </div>
+        )
       ) : (
         <div className="max-h-[60vh] overflow-auto rounded-md border bg-muted/30">
           {diff === null ? (
@@ -182,4 +194,35 @@ export function VersionPreview({
       )}
     </div>
   )
+}
+
+function isCanvasContent(content: string): boolean {
+  try {
+    const data = JSON.parse(content)
+    return data.type === "openvlt-canvas"
+  } catch {
+    return false
+  }
+}
+
+function getCanvasShapeCount(content: string): string {
+  try {
+    const data = JSON.parse(content)
+    const store = data.document?.store ?? data.document ?? {}
+    let strokes = 0, texts = 0, shapes = 0
+    for (const key of Object.keys(store)) {
+      const record = store[key]
+      if (record?.typeName !== "shape") continue
+      if (record.type === "handwrite") strokes++
+      else if (record.type === "text-note") texts++
+      else shapes++
+    }
+    const parts: string[] = []
+    if (strokes > 0) parts.push(`${strokes} stroke${strokes > 1 ? "s" : ""}`)
+    if (texts > 0) parts.push(`${texts} text block${texts > 1 ? "s" : ""}`)
+    if (shapes > 0) parts.push(`${shapes} shape${shapes > 1 ? "s" : ""}`)
+    return parts.length > 0 ? parts.join(", ") : "Empty canvas"
+  } catch {
+    return ""
+  }
 }

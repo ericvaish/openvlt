@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { ChevronRightIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { VersionTrigger, EditSession } from "@/types"
 import type { VersionMeta } from "@/lib/versions/service"
@@ -92,9 +93,7 @@ function SessionGroup({
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted/50"
       >
-        <span className={cn("transition-transform", expanded && "rotate-90")}>
-          ▶
-        </span>
+        <ChevronRightIcon className={cn("size-3 shrink-0 transition-transform", expanded && "rotate-90")} />
         <span className="font-medium">{timeRange}</span>
         <span className="ml-auto tabular-nums">
           {group.versions.length} version{group.versions.length !== 1 ? "s" : ""}
