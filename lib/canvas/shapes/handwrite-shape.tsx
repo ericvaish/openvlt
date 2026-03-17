@@ -18,6 +18,7 @@ declare module "tldraw" {
       size: string
       points: string // JSON array of {x, y, z} — z is pressure
       isComplete: boolean
+      penType: string // "pen" | "highlighter"
     }
   }
 }
@@ -31,6 +32,7 @@ export type HandwriteShape = TLBaseShape<
     size: string
     points: string
     isComplete: boolean
+    penType: string
   }
 >
 
@@ -95,6 +97,7 @@ export class HandwriteShapeUtil extends ShapeUtil<HandwriteShape> {
       size: "m",
       points: "[]",
       isComplete: false,
+      penType: "pen",
     }
   }
 

@@ -172,6 +172,7 @@ export class PixelEraserTool extends StateNode {
             size: shape.props.size,
             points: JSON.stringify(relPts),
             isComplete: true,
+            penType: shape.props.penType || "pen",
           },
         } as Parameters<typeof this.editor.createShape>[0])
       }

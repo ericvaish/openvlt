@@ -18,6 +18,8 @@ export class HandwriteTool extends StateNode {
   private ctx: CanvasRenderingContext2D | null = null
   private color = "#1d1d1d"
   private strokeWidth = 3
+  private opacity = 1
+  private penType: "pen" | "highlighter" = "pen"
   private lastScreenX = 0
   private lastScreenY = 0
   private prevScreenX = 0
@@ -113,21 +115,36 @@ export class HandwriteTool extends StateNode {
     this.maxX = 0
     this.maxY = 0
 
-    // Get style from stroke defaults only (not tldraw's shared DefaultSizeStyle
-    // which gets polluted by the text-note tool's font size)
+    // Read from active pen preset
     let colorName = "black"
     let sizeName = "m"
+    let penType: "pen" | "highlighter" = "pen"
     try {
-      const stored = localStorage.getItem("openvlt:stroke-defaults")
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        colorName = parsed.color || "black"
-        sizeName = parsed.size || "m"
+      const presets = JSON.parse(localStorage.getItem("openvlt:pen-presets") || "[]")
+      const activeIdx = parseInt(localStorage.getItem("openvlt:active-pen") || "0") || 0
+      const preset = presets[activeIdx]
+      if (preset) {
+        colorName = preset.color || "black"
+        sizeName = preset.size || "m"
+        penType = preset.type || "pen"
       }
     } catch {}
+    // Fallback to old stroke defaults if no presets
+    if (colorName === "black" && sizeName === "m") {
+      try {
+        const stored = localStorage.getItem("openvlt:stroke-defaults")
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          colorName = parsed.color || "black"
+          sizeName = parsed.size || "m"
+        }
+      } catch {}
+    }
 
     this.color = this.COLOR_MAP[colorName] || "#1d1d1d"
     this.strokeWidth = this.SIZE_MAP[sizeName] || 3
+    this.penType = penType
+    this.opacity = penType === "highlighter" ? 0.35 : 1
 
     // Clear previous wet ink and resize canvas
     if (this.canvas && this.ctx) {
@@ -181,8 +198,9 @@ export class HandwriteTool extends StateNode {
       const pw = pressureEnabled ? (0.3 + pressure * 1.2) : 1
       const w = Math.max(0.5, this.strokeWidth * pw * zoom)
 
+      this.ctx.globalAlpha = this.opacity
       this.ctx.strokeStyle = this.color
-      this.ctx.lineWidth = w
+      this.ctx.lineWidth = this.penType === "highlighter" ? Math.max(w, 12 * zoom) : w
       this.ctx.lineCap = "round"
       this.ctx.lineJoin = "round"
 
@@ -229,17 +247,28 @@ export class HandwriteTool extends StateNode {
       })
     })
 
-    // Get style names for the shape from stroke defaults only
+    // Read from active pen preset (same as onPointerDown)
     let colorName = "black"
     let sizeName = "m"
     try {
-      const stored = localStorage.getItem("openvlt:stroke-defaults")
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        colorName = parsed.color || "black"
-        sizeName = parsed.size || "m"
+      const presets = JSON.parse(localStorage.getItem("openvlt:pen-presets") || "[]")
+      const activeIdx = parseInt(localStorage.getItem("openvlt:active-pen") || "0") || 0
+      const preset = presets[activeIdx]
+      if (preset) {
+        colorName = preset.color || "black"
+        sizeName = preset.size || "m"
       }
     } catch {}
+    if (colorName === "black" && sizeName === "m") {
+      try {
+        const stored = localStorage.getItem("openvlt:stroke-defaults")
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          colorName = parsed.color || "black"
+          sizeName = parsed.size || "m"
+        }
+      } catch {}
+    }
 
     // Try shape recognition if snap-to-shape is enabled
     if (this.isSnapToShapeEnabled() && this.points.length >= 5) {
@@ -324,6 +353,7 @@ export class HandwriteTool extends StateNode {
         color: colorName,
         size: sizeName,
         points: JSON.stringify(this.points),
+        penType: this.penType,
         isComplete: true,
       },
     })

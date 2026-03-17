@@ -70,13 +70,16 @@ export const InkLayer = React.forwardRef<InkLayerHandle, InkLayerProps>(
           if (pts.length < 2) continue
 
           const isErasing = erasingIds.has(shape.id)
+          const isHighlighter = shape.props.penType === "highlighter"
           const color = isErasing ? "#aaaaaa" : (COLOR_MAP[shape.props.color] || shape.props.color || "#1d1d1d")
-          const baseWidth = SIZE_MAP[shape.props.size] || parseFloat(String(shape.props.size)) || 3
+          const baseWidth = isHighlighter
+            ? Math.max(SIZE_MAP[shape.props.size] || 5, 12)
+            : (SIZE_MAP[shape.props.size] || parseFloat(String(shape.props.size)) || 3)
 
           const toX = (px: number) => (shape.x + px + camX) * zoom
           const toY = (py: number) => (shape.y + py + camY) * zoom
 
-          ctx.globalAlpha = isErasing ? 0.3 : 1
+          ctx.globalAlpha = isErasing ? 0.3 : isHighlighter ? 0.35 : 1
           ctx.strokeStyle = color
           ctx.lineWidth = baseWidth * zoom
           ctx.lineCap = "round"
