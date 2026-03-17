@@ -419,6 +419,30 @@ export function NoteHeader({ note, isSplit = false, pane = "main", toolbarSlot }
                   {isFavorite ? "Remove favorite" : "Favorite"}
                 </button>
                 <button
+                  onClick={async () => {
+                    setMoreOpen(false)
+                    const { exportCanvasToPdf } = await import("@/lib/canvas/export-pdf")
+                    const res = await fetch(`/api/notes/${note.id}`)
+                    if (!res.ok) return
+                    const data = await res.json()
+                    const settings = (() => { try { return JSON.parse(data.content).settings ?? {} } catch { return {} } })()
+                    exportCanvasToPdf(
+                      data.content,
+                      title,
+                      settings.pageSize === "letter" ? 816 : settings.pageSize === "legal" ? 816 : 794,
+                      settings.pageSize === "letter" ? 1056 : settings.pageSize === "legal" ? 1344 : 1123,
+                      40,
+                      settings.pageCount ?? 1,
+                      settings.background ?? "blank",
+                      settings.customSpacing ?? 27
+                    )
+                  }}
+                  className="flex items-center gap-2 rounded px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <FileTextIcon className="size-3.5" />
+                  Export as PDF
+                </button>
+                <button
                   onClick={() => { handleDelete(); setMoreOpen(false) }}
                   className="flex items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive transition-colors hover:bg-accent"
                 >

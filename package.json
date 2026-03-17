@@ -50,6 +50,7 @@
     "diff": "^8.0.3",
     "fuse.js": "^7.1.0",
     "gray-matter": "^4.0.3",
+    "jspdf": "^4.2.1",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.577.0",
     "mammoth": "^1.12.0",
