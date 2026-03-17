@@ -55,18 +55,28 @@ export const InkLayer = React.forwardRef<InkLayerHandle, InkLayerProps>(
 
       const shapes = editor.getCurrentPageShapes()
 
+      // Get shapes currently being erased (greyed out preview)
+      let erasingIds: Set<string>
+      try {
+        erasingIds = new Set(editor.getErasingShapeIds())
+      } catch {
+        erasingIds = new Set()
+      }
+
       for (const shape of shapes) {
         if (shape.type !== "handwrite") continue
         try {
           const pts = JSON.parse(shape.props.points || "[]")
           if (pts.length < 2) continue
 
-          const color = COLOR_MAP[shape.props.color] || shape.props.color || "#1d1d1d"
+          const isErasing = erasingIds.has(shape.id)
+          const color = isErasing ? "#aaaaaa" : (COLOR_MAP[shape.props.color] || shape.props.color || "#1d1d1d")
           const baseWidth = SIZE_MAP[shape.props.size] || parseFloat(String(shape.props.size)) || 3
 
           const toX = (px: number) => (shape.x + px + camX) * zoom
           const toY = (py: number) => (shape.y + py + camY) * zoom
 
+          ctx.globalAlpha = isErasing ? 0.3 : 1
           ctx.strokeStyle = color
           ctx.lineWidth = baseWidth * zoom
           ctx.lineCap = "round"
@@ -92,6 +102,7 @@ export const InkLayer = React.forwardRef<InkLayerHandle, InkLayerProps>(
             ctx.lineTo(toX(last.x), toY(last.y))
           }
           ctx.stroke()
+          ctx.globalAlpha = 1
         } catch {}
       }
     }, [editor])
@@ -102,12 +113,17 @@ export const InkLayer = React.forwardRef<InkLayerHandle, InkLayerProps>(
     // Redraw when shapes change (new stroke added/deleted)
     React.useEffect(() => {
       if (!editor) return
-      const unsub = editor.store.listen(
+      const unsubDoc = editor.store.listen(
         () => { if (!isDrawing) redraw() },
         { source: "all", scope: "document" }
       )
+      // Also redraw on session changes (eraser selection preview)
+      const unsubSession = editor.store.listen(
+        () => { if (!isDrawing) redraw() },
+        { source: "all", scope: "session" }
+      )
       redraw()
-      return unsub
+      return () => { unsubDoc(); unsubSession() }
     }, [editor, redraw, isDrawing])
 
     return (
