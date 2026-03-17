@@ -8,6 +8,7 @@ import { CanvasEditor, type CanvasEditorState } from "@/components/canvas-editor
 import { CanvasToolbarInline } from "@/components/canvas/canvas-toolbar-inline"
 import { LockPrompt } from "@/components/lock-dialog"
 import { NoteProperties } from "@/components/note-properties"
+import { TimeMachinePanel } from "@/components/history/time-machine-panel"
 import type { NoteMetadata } from "@/types"
 
 interface TabPanelProps {
@@ -38,6 +39,21 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
   const [error, setError] = React.useState(false)
   const fetchedRef = React.useRef(false)
   const [canvasState, setCanvasState] = React.useState<CanvasEditorState | null>(null)
+  const [historyOpen, setHistoryOpen] = React.useState(false)
+  const [historyFolderId, setHistoryFolderId] = React.useState<string | null>(null)
+
+  // Listen for history toggle event (for canvas/excalidraw notes)
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.noteId === noteId) {
+        setHistoryOpen((prev) => !prev)
+        setHistoryFolderId(detail?.folderId ?? null)
+      }
+    }
+    window.addEventListener("openvlt:toggle-history", handler)
+    return () => window.removeEventListener("openvlt:toggle-history", handler)
+  }, [noteId])
 
   React.useEffect(() => {
     if (fetchedRef.current) return
@@ -114,13 +130,29 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
     <div className={`flex h-full min-w-0 flex-col overflow-hidden ${active ? "" : "hidden"}`}>
       <NoteHeader note={metadata} isSplit={isSplit} pane={isSplit ? "split" : "main"} toolbarSlot={canvasToolbar} />
       {!isCanvas && !isExcalidraw && <NoteProperties noteId={metadata.id} />}
-      {isCanvas ? (
-        <CanvasEditor noteId={metadata.id} initialData={content} onEditorReady={setCanvasState} />
-      ) : isExcalidraw ? (
-        <ExcalidrawEditor noteId={metadata.id} initialData={content} />
-      ) : (
-        <NoteEditor noteId={metadata.id} initialContent={content} initialVersion={metadata.version} coverImage={metadata.coverImage} pane={isSplit ? "split" : "main"} />
-      )}
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden">
+          {isCanvas ? (
+            <CanvasEditor noteId={metadata.id} initialData={content} onEditorReady={setCanvasState} />
+          ) : isExcalidraw ? (
+            <ExcalidrawEditor noteId={metadata.id} initialData={content} />
+          ) : (
+            <NoteEditor noteId={metadata.id} initialContent={content} initialVersion={metadata.version} coverImage={metadata.coverImage} pane={isSplit ? "split" : "main"} />
+          )}
+        </div>
+        {historyOpen && (isCanvas || isExcalidraw) && (
+          <TimeMachinePanel
+            noteId={metadata.id}
+            folderId={historyFolderId}
+            onClose={() => setHistoryOpen(false)}
+            onRestored={() => {
+              setHistoryOpen(false)
+              // Reload the page to pick up restored content
+              window.location.reload()
+            }}
+          />
+        )}
+      </div>
     </div>
   )
 }
