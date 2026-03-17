@@ -270,12 +270,16 @@ export class HandwriteTool extends StateNode {
       } catch {}
     }
 
-    // Try shape recognition if snap-to-shape is enabled
-    if (this.isSnapToShapeEnabled() && this.points.length >= 5) {
+    // Try shape recognition if snap-to-shape is enabled (not for highlighter)
+    if (this.isSnapToShapeEnabled() && this.penType !== "highlighter" && this.points.length >= 5) {
       const absPoints = this.points.map(p => ({ x: p.x + this.originX, y: p.y + this.originY }))
       const recognized = recognizeShape(absPoints)
 
       if (recognized) {
+        // Apply active pen color to the recognized shape
+        try {
+          this.editor.setStyleForNextShapes(DefaultColorStyle, colorName)
+        } catch {}
         const { type, bounds } = recognized
 
         if (type === "line") {

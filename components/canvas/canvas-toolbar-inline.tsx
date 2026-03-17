@@ -19,6 +19,8 @@ import {
   GridIcon,
   PaletteIcon,
   LassoIcon,
+  PlusIcon,
+  Trash2Icon,
 } from "lucide-react"
 import {
   PAGE_SIZES,
@@ -124,7 +126,11 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
       }
     }
     document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
+    document.addEventListener("touchstart", handler as EventListener)
+    return () => {
+      document.removeEventListener("mousedown", handler)
+      document.removeEventListener("touchstart", handler as EventListener)
+    }
   }, [shapesOpen, pageMenuOpen, strokeMenuOpen, eraserMenuOpen, penSettingsOpen])
 
   const [currentRuleStyle, setCurrentRuleStyle] = React.useState(ruleStyle)
@@ -217,12 +223,12 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
             title={`${preset.type === "highlighter" ? "Highlighter" : "Pen"} — ${preset.color} ${preset.size.toUpperCase()} (double-click to edit)`}
           >
             {preset.type === "highlighter" ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={COLOR_HEX[preset.color] || "#1d1d1d"} strokeWidth="2.5" strokeLinecap="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={preset.color === "black" ? "currentColor" : (COLOR_HEX[preset.color] || "currentColor")} strokeWidth="2.5" strokeLinecap="round">
                 <path d="M4 18h8" />
                 <path d="M4 14h12" opacity="0.5" />
               </svg>
             ) : (
-              <PenToolIcon className="size-3.5" style={{ color: COLOR_HEX[preset.color] || "#1d1d1d" }} />
+              <PenToolIcon className="size-3.5" style={{ color: preset.color === "black" || preset.color === "white" ? undefined : (COLOR_HEX[preset.color] || undefined) }} />
             )}
           </button>
           {penSettingsOpen === idx && (
@@ -300,10 +306,52 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
                   ))}
                 </div>
               </div>
+              {/* Delete preset */}
+              {penPresets.length > 1 && (
+                <button
+                  onClick={() => {
+                    const updated = penPresets.filter((_, i) => i !== idx)
+                    setPenPresets(updated)
+                    savePenPresets(updated)
+                    if (activePenIdx >= updated.length) {
+                      setActivePenIdx(updated.length - 1)
+                      setActivePenIndex(updated.length - 1)
+                    }
+                    setPenSettingsOpen(null)
+                  }}
+                  className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] text-destructive transition-colors hover:bg-accent"
+                >
+                  <Trash2Icon className="size-3" />
+                  Delete preset
+                </button>
+              )}
             </div>
           )}
         </div>
       ))}
+      {/* Add new pen preset */}
+      <button
+        onClick={() => {
+          const newPreset: PenPreset = {
+            id: `pen-${Date.now()}`,
+            type: "pen",
+            color: "black",
+            size: "m",
+          }
+          const updated = [...penPresets, newPreset]
+          setPenPresets(updated)
+          savePenPresets(updated)
+          const newIdx = updated.length - 1
+          setActivePenIdx(newIdx)
+          setActivePenIndex(newIdx)
+          setPenSettingsOpen(newIdx)
+          selectTool("handwrite")
+        }}
+        className={btn(false)}
+        title="Add pen preset"
+      >
+        <PlusIcon className="size-3.5" />
+      </button>
       {/* Eraser — single tap uses active eraser, double tap opens menu */}
       <div ref={eraserRef} className="relative">
         <button
