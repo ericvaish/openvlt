@@ -137,7 +137,7 @@ export function InkLayer({ editor, camera, isDrawing }: InkLayerProps) {
         width: "100%",
         height: "100%",
         pointerEvents: "none",
-        zIndex: 3,
+        zIndex: 1,
       }}
     />
   )

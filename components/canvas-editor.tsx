@@ -773,7 +773,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              zIndex: 1,
+              zIndex: 3,
               transition: "color 0.15s, border-color 0.15s",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "#666"; e.currentTarget.style.borderColor = "#666" }}

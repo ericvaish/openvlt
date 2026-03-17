@@ -46,7 +46,7 @@ export class HandwriteTool extends StateNode {
     if (container && !this.canvas) {
       this.canvas = document.createElement("canvas")
       this.canvas.style.cssText =
-        "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:999;"
+        "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;"
       const dpr = window.devicePixelRatio || 1
       const rect = container.getBoundingClientRect()
       this.canvas.width = rect.width * dpr
