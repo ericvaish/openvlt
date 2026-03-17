@@ -10,6 +10,7 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - **Text input**: Model C — invisible text regions, borderless until selected
 - **Note types**: Markdown (`.md`) and Canvas (`.canvas.json`) coexist
 - **Input**: Apple Pencil/stylus = active tool, finger = pan/zoom
+- **Ink rendering**: Custom high-DPI canvas layer (InkLayer) bypasses tldraw's blurry CSS transforms
 
 ---
 
@@ -53,21 +54,27 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] Tools: Select, Hand, Pen, Eraser, Shapes (dropdown: rectangle/ellipse/triangle/line/arrow), Text, Undo/Redo
 - [x] Shapes dropdown with active shape indicator
 - [x] Style bar closes when switching away from select tool
-- [ ] Pen settings panel (color picker, stroke width slider)
+- [x] Stroke style dropdown: size slider (S-XL) with preview, 13 colors, save as default
+- [x] Note header actions collapsed into "..." dropdown menu
 - [ ] Pressure sensitivity toggle in pen settings
 - [ ] Collapsible toolbar (show/hide ribbon)
 - [ ] Compact toolbar mode (smaller buttons)
 
-## Phase 4: Pages and Backgrounds
+## Phase 4: Pages and Backgrounds ✅
 
-- [ ] Page size system — constants for A4, Letter, Legal, infinite
-- [ ] Store selected page size in canvas JSON metadata
-- [ ] Background pattern rendering: ruled lines, grid, dot grid, blank
-- [ ] Custom SVG pattern backgrounds via tldraw's background component override
-- [ ] Page/background selector UI in toolbar
-- [ ] Dynamic page size switching per note (not permanent)
-- [ ] Camera bounds enforcement for fixed-size pages
-- [ ] Visual page boundary indicator (shadow/border)
+- [x] Page size system — constants for A4, Letter, Legal, infinite
+- [x] Background pattern rendering: ruled lines (with red margin), grid, dot grid, blank
+- [x] Custom canvas background component via tldraw Grid override
+- [x] Page/background selector UI in toolbar (grid icon dropdown)
+- [x] Dynamic page size switching per note
+- [x] Free camera movement (no restrictive bounds)
+- [x] Visual page boundary with white page + grey outside area
+- [x] Multi-page support with "+" buttons between pages
+- [x] Page mask overlay hides content drawn outside fixed-size pages
+- [x] Light blue line color for iPad visibility
+- [x] Wider left margin (60px) with red margin line like a notebook
+- [x] Top margin (60px) for writing space
+- [x] Settings saved to localStorage
 - [ ] Standard notebook rule sizes (college ruled, wide ruled, square grid)
 - [ ] Custom line spacing option
 
@@ -96,12 +103,29 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 
 - [x] Detect `pointerType` from native DOM `PointerEvent`
 - [x] Finger = always pan (single finger) / pinch-to-zoom (two fingers)
-- [x] Manual touch handling: block all touch events from tldraw, handle pan/zoom ourselves
-- [x] Pinch-to-zoom anchored to midpoint between fingers
-- [x] Pen/stylus = uses active tool (draw by default)
+- [x] Manual touch handling: block single-finger touch from tldraw, handle pan ourselves
+- [x] Manual pinch-to-zoom with correct anchor point math
+- [x] Fix zoom persistence (wide zoomSteps, always pass z to setCamera)
+- [x] Block Safari gesture events to prevent double-zoom
+- [x] AbortController prevents double event registration from React StrictMode
+- [x] Pen/stylus = uses active tool (handwrite by default)
 - [x] Double-tap detection for creating text blocks on touch
+- [x] Tap outside text block to close/deselect
 - [ ] "Draw with finger" toggle option (when enabled, finger draws too)
 - [ ] Store preference in localStorage
+
+## Phase 7.5: Custom Handwrite Tool ✅
+
+- [x] Custom `handwrite` shape and tool — bypasses tldraw's stroke smoothing
+- [x] Zero post-processing: raw pen input rendered as smooth bezier curves
+- [x] Wet ink canvas overlay for instant real-time drawing (no React re-renders)
+- [x] High-DPI InkLayer renders completed strokes at native screen resolution
+- [x] Smooth quadratic bezier curves (Catmull-Rom style) during and after drawing
+- [x] No flicker on pen lift (delayed wet ink clear)
+- [x] Pressure-sensitive stroke width from Apple Pencil
+- [x] Proper z-index layering: ink (1) < page mask (2) < add-page buttons (3)
+- [ ] Fix text block rendering resolution (tldraw CSS transform limitation)
+- [ ] Investigate rendering text blocks as HTML overlay for crisp text
 
 ## Phase 8: Snap-to-Shape + Lasso Select
 
@@ -133,6 +157,11 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [ ] Detect canvas note type in version diff view
 
 ---
+
+## Known Limitations
+
+- **Text block resolution**: Text inside tldraw shapes is rendered at CSS-transform resolution (can be blurry when zoomed in). Fixing requires rendering text as HTML overlay outside tldraw, which is a significant architectural change.
+- **tldraw's minimum stroke width**: 2px (S size) is tldraw's hardcoded minimum. Thinner lines would require forking tldraw's STROKE_SIZES.
 
 ## Future Enhancements (Post-MVP)
 

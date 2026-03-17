@@ -2,21 +2,6 @@
 
 import * as React from "react"
 
-interface InkPoint {
-  x: number
-  y: number
-  z: number
-}
-
-interface InkStroke {
-  id: string
-  originX: number
-  originY: number
-  points: InkPoint[]
-  color: string
-  size: number
-}
-
 const COLOR_MAP: Record<string, string> = {
   black: "#1d1d1d", grey: "#9fa8b2", "light-violet": "#e085f4",
   violet: "#ae3ec9", blue: "#4465e9", "light-blue": "#4ba1f1",
@@ -27,54 +12,6 @@ const COLOR_MAP: Record<string, string> = {
 
 const SIZE_MAP: Record<string, number> = { s: 1.5, m: 3, l: 5, xl: 9 }
 
-function drawStroke(
-  ctx: CanvasRenderingContext2D,
-  stroke: InkStroke,
-  camX: number,
-  camY: number,
-  zoom: number,
-  sbX: number,
-  sbY: number
-) {
-  const pts = stroke.points
-  if (pts.length < 2) return
-
-  const color = COLOR_MAP[stroke.color] || stroke.color || "#1d1d1d"
-  const baseWidth = SIZE_MAP[stroke.size] || parseFloat(String(stroke.size)) || 3
-
-  ctx.strokeStyle = color
-  ctx.lineWidth = baseWidth * zoom
-  ctx.lineCap = "round"
-  ctx.lineJoin = "round"
-
-  const toScreenX = (px: number) => (stroke.originX + px + camX) * zoom
-  const toScreenY = (py: number) => (stroke.originY + py + camY) * zoom
-
-  ctx.beginPath()
-  ctx.moveTo(toScreenX(pts[0].x), toScreenY(pts[0].y))
-
-  if (pts.length === 2) {
-    ctx.lineTo(toScreenX(pts[1].x), toScreenY(pts[1].y))
-  } else {
-    const mx1 = (pts[0].x + pts[1].x) / 2
-    const my1 = (pts[0].y + pts[1].y) / 2
-    ctx.lineTo(toScreenX(mx1), toScreenY(my1))
-
-    for (let i = 1; i < pts.length - 1; i++) {
-      const mx = (pts[i].x + pts[i + 1].x) / 2
-      const my = (pts[i].y + pts[i + 1].y) / 2
-      ctx.quadraticCurveTo(
-        toScreenX(pts[i].x), toScreenY(pts[i].y),
-        toScreenX(mx), toScreenY(my)
-      )
-    }
-
-    const last = pts[pts.length - 1]
-    ctx.lineTo(toScreenX(last.x), toScreenY(last.y))
-  }
-  ctx.stroke()
-}
-
 interface InkLayerProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   editor: any
@@ -84,12 +21,12 @@ interface InkLayerProps {
 
 export function InkLayer({ editor, camera, isDrawing }: InkLayerProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const rafRef = React.useRef<number>(0)
 
-  React.useEffect(() => {
+  // Redraw function — called synchronously from store listener
+  const redraw = React.useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas || !editor) return
-    // Don't redraw while actively drawing — wet ink canvas handles that
-    if (isDrawing) return
 
     const dpr = window.devicePixelRatio || 1
     const parent = canvas.parentElement
@@ -97,36 +34,93 @@ export function InkLayer({ editor, camera, isDrawing }: InkLayerProps) {
     const w = parent.clientWidth
     const h = parent.clientHeight
 
-    canvas.width = w * dpr
-    canvas.height = h * dpr
-    canvas.style.width = `${w}px`
-    canvas.style.height = `${h}px`
+    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+      canvas.width = w * dpr
+      canvas.height = h * dpr
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
+    }
 
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
 
-    // Get all handwrite shapes from tldraw store
+    const cam = editor.getCamera()
+    const zoom = cam.z ?? 1
+    const camX = cam.x
+    const camY = cam.y
+
     const shapes = editor.getCurrentPageShapes()
-    const sb = editor.getViewportScreenBounds()
 
     for (const shape of shapes) {
       if (shape.type !== "handwrite") continue
       try {
         const pts = JSON.parse(shape.props.points || "[]")
         if (pts.length < 2) continue
-        drawStroke(ctx, {
-          id: shape.id,
-          originX: shape.x,
-          originY: shape.y,
-          points: pts,
-          color: shape.props.color,
-          size: shape.props.size,
-        }, camera.x, camera.y, camera.z, sb.x, sb.y)
+
+        const color = COLOR_MAP[shape.props.color] || shape.props.color || "#1d1d1d"
+        const baseWidth = SIZE_MAP[shape.props.size] || parseFloat(String(shape.props.size)) || 3
+
+        const toX = (px: number) => (shape.x + px + camX) * zoom
+        const toY = (py: number) => (shape.y + py + camY) * zoom
+
+        ctx.strokeStyle = color
+        ctx.lineWidth = baseWidth * zoom
+        ctx.lineCap = "round"
+        ctx.lineJoin = "round"
+
+        ctx.beginPath()
+        ctx.moveTo(toX(pts[0].x), toY(pts[0].y))
+
+        if (pts.length === 2) {
+          ctx.lineTo(toX(pts[1].x), toY(pts[1].y))
+        } else {
+          const mx1 = (pts[0].x + pts[1].x) / 2
+          const my1 = (pts[0].y + pts[1].y) / 2
+          ctx.lineTo(toX(mx1), toY(my1))
+
+          for (let i = 1; i < pts.length - 1; i++) {
+            const mx = (pts[i].x + pts[i + 1].x) / 2
+            const my = (pts[i].y + pts[i + 1].y) / 2
+            ctx.quadraticCurveTo(toX(pts[i].x), toY(pts[i].y), toX(mx), toY(my))
+          }
+
+          const last = pts[pts.length - 1]
+          ctx.lineTo(toX(last.x), toY(last.y))
+        }
+        ctx.stroke()
       } catch {}
     }
-  }, [editor, camera, isDrawing])
+  }, [editor])
+
+  // Listen to store changes and redraw synchronously via rAF
+  React.useEffect(() => {
+    if (!editor) return
+
+    const scheduleRedraw = () => {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(redraw)
+    }
+
+    // Redraw on any store change
+    const unsub = editor.store.listen(scheduleRedraw, { source: "all", scope: "all" })
+
+    // Also redraw when camera prop changes (from our manual touch panning)
+    scheduleRedraw()
+
+    return () => {
+      unsub()
+      cancelAnimationFrame(rafRef.current)
+    }
+  }, [editor, redraw])
+
+  // Redraw when camera changes from manual panning
+  React.useEffect(() => {
+    if (isDrawing) return
+    cancelAnimationFrame(rafRef.current)
+    rafRef.current = requestAnimationFrame(redraw)
+  }, [camera, isDrawing, redraw])
 
   return (
     <canvas
