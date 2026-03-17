@@ -536,6 +536,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
     ),
   }), [pageSize, background, pageCount])
 
+
   // Track selected text-note shape for the style bar
   const [selectedTextNote, setSelectedTextNote] =
     React.useState<TextNoteShape | null>(null)
@@ -847,6 +848,81 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
             createTextOnCanvasDoubleClick: false,
           }}
         />
+      {/* Page mask overlay — covers areas outside pages to hide out-of-bounds content */}
+      {pageSize !== "infinite" && (() => {
+        const pd = PAGE_SIZES.find(p => p.id === pageSize)
+        if (!pd || pd.width === 0) return null
+        const z = camera.z
+        const cx = camera.x
+        const cy = camera.y
+
+        // Large number to cover the whole screen in each direction
+        const BIG = 10000
+
+        // For each page gap and the areas above/below/left/right of pages,
+        // render grey overlay divs
+        const overlays: React.ReactNode[] = []
+
+        // Left of pages
+        const pageLeftScreen = (0 + cx) * z
+        overlays.push(
+          <div key="left" style={{
+            position: "absolute", top: 0, left: 0, bottom: 0,
+            width: Math.max(0, pageLeftScreen),
+            background: "#f0f0f0", pointerEvents: "none", zIndex: 2,
+          }} />
+        )
+
+        // Right of pages
+        const pageRightScreen = (pd.width + cx) * z
+        overlays.push(
+          <div key="right" style={{
+            position: "absolute", top: 0, right: 0, bottom: 0,
+            left: Math.max(0, pageRightScreen),
+            background: "#f0f0f0", pointerEvents: "none", zIndex: 2,
+          }} />
+        )
+
+        // Above first page
+        const firstPageTop = (0 + cy) * z
+        overlays.push(
+          <div key="top" style={{
+            position: "absolute", top: 0, left: Math.max(0, pageLeftScreen), right: 0,
+            height: Math.max(0, firstPageTop),
+            width: Math.max(0, pageRightScreen - pageLeftScreen),
+            background: "#f0f0f0", pointerEvents: "none", zIndex: 2,
+          }} />
+        )
+
+        // Below last page
+        const lastPageBottom = (pageCount * (pd.height + PAGE_GAP) - PAGE_GAP + cy) * z
+        overlays.push(
+          <div key="bottom" style={{
+            position: "absolute", bottom: 0, left: Math.max(0, pageLeftScreen),
+            top: Math.max(0, lastPageBottom),
+            width: Math.max(0, pageRightScreen - pageLeftScreen),
+            background: "#f0f0f0", pointerEvents: "none", zIndex: 2,
+          }} />
+        )
+
+        // Gaps between pages
+        for (let i = 0; i < pageCount - 1; i++) {
+          const gapTop = ((i + 1) * pd.height + i * PAGE_GAP + cy) * z
+          const gapBottom = ((i + 1) * (pd.height + PAGE_GAP) + cy) * z
+          overlays.push(
+            <div key={`gap-${i}`} style={{
+              position: "absolute",
+              left: Math.max(0, pageLeftScreen),
+              top: Math.max(0, gapTop),
+              width: Math.max(0, pageRightScreen - pageLeftScreen),
+              height: Math.max(0, gapBottom - gapTop),
+              background: "#f0f0f0", pointerEvents: "none", zIndex: 2,
+            }} />
+          )
+        }
+
+        return overlays
+      })()}
       </div>
     </div>
   )
