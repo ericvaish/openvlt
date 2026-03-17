@@ -93,6 +93,8 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
       onCustomSpacingChange={canvasState.onCustomSpacingChange}
       pressureSensitivity={canvasState.pressureSensitivity}
       onPressureSensitivityChange={canvasState.onPressureSensitivityChange}
+      drawWithFinger={canvasState.drawWithFinger}
+      onDrawWithFingerChange={canvasState.onDrawWithFingerChange}
     />
   ) : null
 

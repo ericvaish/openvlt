@@ -70,9 +70,11 @@ interface CanvasToolbarInlineProps {
   onCustomSpacingChange: (spacing: number) => void
   pressureSensitivity: boolean
   onPressureSensitivityChange: (enabled: boolean) => void
+  drawWithFinger: boolean
+  onDrawWithFingerChange: (enabled: boolean) => void
 }
 
-export function CanvasToolbarInline({ editor, pageSize: initialPageSize, background: initialBackground, pageCount, onPageSizeChange, onBackgroundChange, onAddPage, onRemovePage, strokeColor, strokeSize, onStrokeColorChange, onStrokeSizeChange, ruleStyle, customSpacing, onRuleStyleChange, onCustomSpacingChange, pressureSensitivity, onPressureSensitivityChange }: CanvasToolbarInlineProps) {
+export function CanvasToolbarInline({ editor, pageSize: initialPageSize, background: initialBackground, pageCount, onPageSizeChange, onBackgroundChange, onAddPage, onRemovePage, strokeColor, strokeSize, onStrokeColorChange, onStrokeSizeChange, ruleStyle, customSpacing, onRuleStyleChange, onCustomSpacingChange, pressureSensitivity, onPressureSensitivityChange, drawWithFinger, onDrawWithFingerChange }: CanvasToolbarInlineProps) {
   const [currentTool, setCurrentTool] = React.useState("hand")
   const [shapesOpen, setShapesOpen] = React.useState(false)
   const [pageMenuOpen, setPageMenuOpen] = React.useState(false)
@@ -116,6 +118,7 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
   const [currentRuleStyle, setCurrentRuleStyle] = React.useState(ruleStyle)
   const [currentCustomSpacing, setCurrentCustomSpacing] = React.useState(customSpacing)
   const [currentPressure, setCurrentPressure] = React.useState(pressureSensitivity)
+  const [currentDrawWithFinger, setCurrentDrawWithFinger] = React.useState(drawWithFinger)
 
   if (!editor) return null
 
@@ -285,6 +288,45 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
                     position: "absolute",
                     top: 2,
                     left: currentPressure ? 18 : 2,
+                    width: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    background: "white",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
+            {/* Draw with finger toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-medium uppercase text-muted-foreground">Draw with finger</span>
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  const next = !currentDrawWithFinger
+                  setCurrentDrawWithFinger(next)
+                  onDrawWithFingerChange(next)
+                }}
+                style={{
+                  position: "relative",
+                  width: 36,
+                  height: 20,
+                  borderRadius: 10,
+                  border: "none",
+                  background: currentDrawWithFinger ? "var(--color-primary, #3b82f6)" : "#71717a",
+                  cursor: "pointer",
+                  padding: 0,
+                  transition: "background 0.2s",
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 2,
+                    left: currentDrawWithFinger ? 18 : 2,
                     width: 16,
                     height: 16,
                     borderRadius: 8,

@@ -111,8 +111,8 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] Pen/stylus = uses active tool (handwrite by default)
 - [x] Double-tap detection for creating text blocks on touch
 - [x] Tap outside text block to close/deselect
-- [ ] "Draw with finger" toggle option (when enabled, finger draws too)
-- [ ] Store preference in localStorage
+- [x] "Draw with finger" toggle option (when enabled, finger draws too)
+- [x] Store preference in localStorage
 
 ## Phase 7.5: Custom Handwrite Tool ✅
 

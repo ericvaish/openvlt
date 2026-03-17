@@ -103,6 +103,8 @@ export interface CanvasEditorState {
   onCustomSpacingChange: (spacing: number) => void
   pressureSensitivity: boolean
   onPressureSensitivityChange: (enabled: boolean) => void
+  drawWithFinger: boolean
+  onDrawWithFingerChange: (enabled: boolean) => void
 }
 
 interface CanvasEditorProps {
@@ -209,10 +211,14 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         let pinchSbX = 0
         let pinchSbY = 0
 
-        // Block ALL touch events from reaching tldraw — we handle them ourselves
+        // Block touch events from reaching tldraw — unless "draw with finger" is on
         container.addEventListener("pointerdown", (e: Event) => {
           const pe = e as PointerEvent
           if (pe.pointerType !== "touch") return
+
+          // When "draw with finger" is enabled, let single-finger touches through to tldraw
+          if (drawWithFingerRef.current) return
+
           e.stopPropagation()
 
           touchPointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY })
@@ -248,6 +254,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         container.addEventListener("pointermove", (e: Event) => {
           const pe = e as PointerEvent
           if (pe.pointerType !== "touch") return
+          if (drawWithFingerRef.current) return
           e.stopPropagation()
 
           touchPointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY })
@@ -282,6 +289,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         container.addEventListener("pointerup", (e: Event) => {
           const pe = e as PointerEvent
           if (pe.pointerType !== "touch") return
+          if (drawWithFingerRef.current) return
           e.stopPropagation()
 
           // Double-tap detection (only on single-finger tap with minimal movement)
@@ -349,6 +357,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         container.addEventListener("pointercancel", (e: Event) => {
           const pe = e as PointerEvent
           if (pe.pointerType !== "touch") return
+          if (drawWithFingerRef.current) return
           touchPointers.delete(pe.pointerId)
           activeTouchCount = touchPointers.size
           if (activeTouchCount === 0) {
@@ -418,6 +427,11 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         onCustomSpacingChange: (v: number) => setCustomSpacing(v),
         pressureSensitivity: cs.pressureSensitivity ?? true,
         onPressureSensitivityChange: (v: boolean) => setPressureSensitivity(v),
+        drawWithFinger: drawWithFingerRef.current,
+        onDrawWithFingerChange: (v: boolean) => {
+          setDrawWithFinger(v)
+          localStorage.setItem("openvlt:draw-with-finger", String(v))
+        },
       })
 
       // Track camera for page button overlay and ink layer
@@ -558,6 +572,14 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
   const [ruleStyle, setRuleStyle] = React.useState<RuleStyle>(() => initialSettings?.ruleStyle ?? getCanvasSettings().ruleStyle ?? "college")
   const [customSpacing, setCustomSpacing] = React.useState(() => initialSettings?.customSpacing ?? getCanvasSettings().customSpacing ?? 27)
   const [pressureSensitivity, setPressureSensitivity] = React.useState(() => initialSettings?.pressureSensitivity ?? getCanvasSettings().pressureSensitivity ?? true)
+  const [drawWithFinger, setDrawWithFinger] = React.useState(() => {
+    try {
+      const stored = localStorage.getItem("openvlt:draw-with-finger")
+      return stored === "true"
+    } catch { return false }
+  })
+  const drawWithFingerRef = React.useRef(drawWithFinger)
+  React.useEffect(() => { drawWithFingerRef.current = drawWithFinger }, [drawWithFinger])
 
   // Refs for current settings so save callback always has latest values
   const pageSizeRef = React.useRef(pageSize)
