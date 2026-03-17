@@ -23,6 +23,9 @@ import { InkLayer, type InkLayerHandle } from "@/components/canvas/ink-layer"
 import {
   type PageSizeId,
   type BackgroundPattern,
+  type CanvasSettings,
+  type RuleStyle,
+  RULE_STYLES,
   PAGE_SIZES,
   PAGE_MARGIN_LEFT,
   PAGE_MARGIN_TOP,
@@ -94,6 +97,14 @@ export interface CanvasEditorState {
   strokeSize: string
   onStrokeColorChange: (color: string) => void
   onStrokeSizeChange: (size: string) => void
+  ruleStyle: RuleStyle
+  customSpacing: number
+  onRuleStyleChange: (style: RuleStyle) => void
+  onCustomSpacingChange: (spacing: number) => void
+  pressureSensitivity: boolean
+  onPressureSensitivityChange: (enabled: boolean) => void
+  drawWithFinger: boolean
+  onDrawWithFingerChange: (enabled: boolean) => void
 }
 
 interface CanvasEditorProps {
@@ -111,15 +122,15 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = React.useRef<any>(null)
 
-  const snapshot = React.useMemo(() => {
+  // Parse initial data — extract document snapshot and settings
+  const { snapshot, initialSettings } = React.useMemo(() => {
     try {
       const data = JSON.parse(initialData)
-      if (data.document && Object.keys(data.document).length > 0) {
-        return data.document
-      }
-      return undefined
+      const doc = data.document && Object.keys(data.document).length > 0 ? data.document : undefined
+      const settings = data.settings as Partial<CanvasSettings> | undefined
+      return { snapshot: doc, initialSettings: settings }
     } catch {
-      return undefined
+      return { snapshot: undefined, initialSettings: undefined }
     }
   }, [initialData])
 
@@ -133,6 +144,18 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
 
       // Default to handwrite tool — low smoothing for natural handwriting
       editor.setCurrentTool("handwrite")
+
+      // Apply saved stroke defaults to tldraw style state
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { DefaultColorStyle, DefaultSizeStyle } = require("@tldraw/tlschema")
+        const saved = localStorage.getItem("openvlt:stroke-defaults")
+        if (saved) {
+          const { color, size } = JSON.parse(saved)
+          if (color) editor.setStyleForNextShapes(DefaultColorStyle, color)
+          if (size) editor.setStyleForNextShapes(DefaultSizeStyle, size)
+        }
+      } catch {}
 
       // Set initial camera bounds based on page size
       const settings = getCanvasSettings()
@@ -188,10 +211,14 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         let pinchSbX = 0
         let pinchSbY = 0
 
-        // Block ALL touch events from reaching tldraw — we handle them ourselves
+        // Block touch events from reaching tldraw — unless "draw with finger" is on
         container.addEventListener("pointerdown", (e: Event) => {
           const pe = e as PointerEvent
           if (pe.pointerType !== "touch") return
+
+          // When "draw with finger" is enabled, let single-finger touches through to tldraw
+          if (drawWithFingerRef.current) return
+
           e.stopPropagation()
 
           touchPointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY })
@@ -227,6 +254,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         container.addEventListener("pointermove", (e: Event) => {
           const pe = e as PointerEvent
           if (pe.pointerType !== "touch") return
+          if (drawWithFingerRef.current) return
           e.stopPropagation()
 
           touchPointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY })
@@ -261,6 +289,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         container.addEventListener("pointerup", (e: Event) => {
           const pe = e as PointerEvent
           if (pe.pointerType !== "touch") return
+          if (drawWithFingerRef.current) return
           e.stopPropagation()
 
           // Double-tap detection (only on single-finger tap with minimal movement)
@@ -328,6 +357,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         container.addEventListener("pointercancel", (e: Event) => {
           const pe = e as PointerEvent
           if (pe.pointerType !== "touch") return
+          if (drawWithFingerRef.current) return
           touchPointers.delete(pe.pointerId)
           activeTouchCount = touchPointers.size
           if (activeTouchCount === 0) {
@@ -377,11 +407,12 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
       })
 
       // Notify parent so toolbar can be rendered in the header
+      const cs = getCanvasSettings()
       onEditorReady?.({
         editor,
-        pageSize: getCanvasSettings().pageSize,
-        background: getCanvasSettings().background,
-        pageCount: getCanvasSettings().pageCount,
+        pageSize: cs.pageSize,
+        background: cs.background,
+        pageCount: cs.pageCount,
         onPageSizeChange: handlePageSizeChange,
         onBackgroundChange: handleBackgroundChange,
         onAddPage: handleAddPage,
@@ -390,6 +421,17 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         strokeSize: getStrokeDefaults().size,
         onStrokeColorChange: updateStrokeColor,
         onStrokeSizeChange: updateStrokeSize,
+        ruleStyle: cs.ruleStyle ?? "college",
+        customSpacing: cs.customSpacing ?? 27,
+        onRuleStyleChange: (s: RuleStyle) => setRuleStyle(s),
+        onCustomSpacingChange: (v: number) => setCustomSpacing(v),
+        pressureSensitivity: cs.pressureSensitivity ?? true,
+        onPressureSensitivityChange: (v: boolean) => setPressureSensitivity(v),
+        drawWithFinger: drawWithFingerRef.current,
+        onDrawWithFingerChange: (v: boolean) => {
+          setDrawWithFinger(v)
+          localStorage.setItem("openvlt:draw-with-finger", String(v))
+        },
       })
 
       // Track camera for page button overlay and ink layer
@@ -397,6 +439,8 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         () => {
           const cam = editor.getCamera()
           setCamera({ x: cam.x, y: cam.y, z: cam.z ?? 1 })
+          // Redraw ink layer on camera move (pan/zoom)
+          inkLayerRef.current?.redraw()
           // Check if handwrite tool is actively drawing
           const tool = editor.root.getCurrent()?.getCurrent()
           const drawing = tool?.isDrawing === true
@@ -449,6 +493,14 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
                 type: "openvlt-canvas",
                 version: 1,
                 document: storeSnapshot,
+                settings: {
+                  pageSize: pageSizeRef.current,
+                  background: backgroundRef.current,
+                  pageCount: pageCountRef.current,
+                  ruleStyle: ruleStyleRef.current,
+                  customSpacing: customSpacingRef.current,
+                  pressureSensitivity: pressureSensitivityRef.current,
+                },
               })
 
               await fetch(`/api/notes/${noteId}`, {
@@ -456,6 +508,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ content: data }),
               })
+              window.dispatchEvent(new Event("openvlt:note-saved"))
             } finally {
               setSaving(false)
             }
@@ -463,6 +516,30 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         },
         { source: "user", scope: "document" }
       )
+
+      // Initial save to ensure settings are persisted in the document
+      // (migrates old canvases that only had localStorage settings)
+      setTimeout(async () => {
+        const storeSnapshot = editor.store.getStoreSnapshot()
+        const data = JSON.stringify({
+          type: "openvlt-canvas",
+          version: 2,
+          document: storeSnapshot,
+          settings: {
+            pageSize: pageSizeRef.current,
+            background: backgroundRef.current,
+            pageCount: pageCountRef.current,
+            ruleStyle: ruleStyleRef.current,
+            customSpacing: customSpacingRef.current,
+            pressureSensitivity: pressureSensitivityRef.current,
+          },
+        })
+        await fetch(`/api/notes/${noteId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: data }),
+        })
+      }, 2000)
     },
     [noteId]
   )
@@ -491,14 +568,66 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
     []
   )
 
-  // Page and background settings
-  const [pageSize, setPageSize] = React.useState<PageSizeId>(() => getCanvasSettings().pageSize)
-  const [background, setBackground] = React.useState<BackgroundPattern>(() => getCanvasSettings().background)
-  const [pageCount, setPageCount] = React.useState(() => getCanvasSettings().pageCount)
+  // Page and background settings — prefer document settings (synced), fall back to localStorage
+  const [pageSize, setPageSize] = React.useState<PageSizeId>(() => initialSettings?.pageSize ?? getCanvasSettings().pageSize)
+  const [background, setBackground] = React.useState<BackgroundPattern>(() => initialSettings?.background ?? getCanvasSettings().background)
+  const [pageCount, setPageCount] = React.useState(() => initialSettings?.pageCount ?? getCanvasSettings().pageCount)
+  const [ruleStyle, setRuleStyle] = React.useState<RuleStyle>(() => initialSettings?.ruleStyle ?? getCanvasSettings().ruleStyle ?? "college")
+  const [customSpacing, setCustomSpacing] = React.useState(() => initialSettings?.customSpacing ?? getCanvasSettings().customSpacing ?? 27)
+  const [pressureSensitivity, setPressureSensitivity] = React.useState(() => initialSettings?.pressureSensitivity ?? getCanvasSettings().pressureSensitivity ?? true)
+  const [drawWithFinger, setDrawWithFinger] = React.useState(() => {
+    try {
+      const stored = localStorage.getItem("openvlt:draw-with-finger")
+      return stored === "true"
+    } catch { return false }
+  })
+  const drawWithFingerRef = React.useRef(drawWithFinger)
+  React.useEffect(() => { drawWithFingerRef.current = drawWithFinger }, [drawWithFinger])
+
+  // Refs for current settings so save callback always has latest values
+  const pageSizeRef = React.useRef(pageSize)
+  const backgroundRef = React.useRef(background)
+  const pageCountRef = React.useRef(pageCount)
+  const ruleStyleRef = React.useRef(ruleStyle)
+  const customSpacingRef = React.useRef(customSpacing)
+  const pressureSensitivityRef = React.useRef(pressureSensitivity)
+  React.useEffect(() => { pageSizeRef.current = pageSize }, [pageSize])
+  React.useEffect(() => { backgroundRef.current = background }, [background])
+  React.useEffect(() => { pageCountRef.current = pageCount }, [pageCount])
+  React.useEffect(() => { ruleStyleRef.current = ruleStyle }, [ruleStyle])
+  React.useEffect(() => { customSpacingRef.current = customSpacing }, [customSpacing])
+  React.useEffect(() => { pressureSensitivityRef.current = pressureSensitivity }, [pressureSensitivity])
+
+  // Save when settings change (pageSize, background, pageCount)
+  React.useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(async () => {
+      setSaving(true)
+      try {
+        const storeSnapshot = editor.store.getStoreSnapshot()
+        const data = JSON.stringify({
+          type: "openvlt-canvas",
+          version: 1,
+          document: storeSnapshot,
+          settings: { pageSize, background, pageCount, ruleStyle, customSpacing, pressureSensitivity },
+        })
+        await fetch(`/api/notes/${noteId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: data }),
+        })
+        window.dispatchEvent(new Event("openvlt:note-saved"))
+      } finally {
+        setSaving(false)
+      }
+    }, 1000)
+  }, [pageSize, background, pageCount, ruleStyle, customSpacing, pressureSensitivity, noteId])
 
   const handlePageSizeChange = React.useCallback((size: PageSizeId) => {
     setPageSize(size)
-    saveCanvasSettings({ pageSize: size, background, pageCount })
+    saveCanvasSettings({ pageSize: size, background, pageCount, ruleStyle, customSpacing, pressureSensitivity })
 
     // Update camera bounds
     if (editorRef.current) {
@@ -528,35 +657,86 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
 
   const handleBackgroundChange = React.useCallback((bg: BackgroundPattern) => {
     setBackground(bg)
-    saveCanvasSettings({ pageSize, background: bg, pageCount })
+    saveCanvasSettings({ pageSize, background: bg, pageCount, ruleStyle, customSpacing, pressureSensitivity })
   }, [pageSize, pageCount])
 
   const handleAddPage = React.useCallback(() => {
     const newCount = pageCount + 1
     setPageCount(newCount)
-    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+    saveCanvasSettings({ pageSize, background, pageCount: newCount, ruleStyle, customSpacing, pressureSensitivity })
   }, [pageSize, background, pageCount])
 
   const handleAddPageAt = React.useCallback((_index: number) => {
     // For now just add a page (position doesn't matter since pages are identical)
     const newCount = pageCount + 1
     setPageCount(newCount)
-    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+    saveCanvasSettings({ pageSize, background, pageCount: newCount, ruleStyle, customSpacing, pressureSensitivity })
   }, [pageSize, background, pageCount])
 
   const handleRemovePage = React.useCallback(() => {
     if (pageCount <= 1) return
     const newCount = pageCount - 1
     setPageCount(newCount)
-    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+    saveCanvasSettings({ pageSize, background, pageCount: newCount, ruleStyle, customSpacing, pressureSensitivity })
   }, [pageSize, background, pageCount])
+
+  const handleDeletePageAt = React.useCallback((pageIndex: number) => {
+    if (pageCount <= 1) return
+    const editor = editorRef.current
+    if (!editor) { handleRemovePage(); return }
+    const pd = PAGE_SIZES.find(p => p.id === pageSize)
+    if (!pd || pd.width === 0) { handleRemovePage(); return }
+
+    // Delete all shapes on this page
+    const pageTop = pageIndex * (pd.height + PAGE_GAP)
+    const pageBottom = pageTop + pd.height
+    const allShapes = editor.getCurrentPageShapes()
+    const shapesToDelete = allShapes.filter((s: { x: number; y: number }) => {
+      const cy = s.y
+      return cy >= pageTop && cy < pageBottom
+    })
+    if (shapesToDelete.length > 0) {
+      editor.deleteShapes(shapesToDelete.map((s: { id: string }) => s.id))
+    }
+
+    // Move shapes from pages below up by one page height + gap
+    const shift = pd.height + PAGE_GAP
+    const shapesBelow = allShapes.filter((s: { x: number; y: number }) => s.y >= pageBottom)
+    for (const s of shapesBelow) {
+      if (!shapesToDelete.includes(s)) {
+        editor.updateShape({ id: s.id, type: s.type, y: s.y - shift })
+      }
+    }
+
+    const newCount = pageCount - 1
+    setPageCount(newCount)
+    saveCanvasSettings({ pageSize, background, pageCount: newCount, ruleStyle, customSpacing, pressureSensitivity })
+  }, [pageSize, background, pageCount, handleRemovePage])
+
+  const handleClearPageAt = React.useCallback((pageIndex: number) => {
+    const editor = editorRef.current
+    if (!editor) return
+    const pd = PAGE_SIZES.find(p => p.id === pageSize)
+    if (!pd || pd.width === 0) return
+
+    const pageTop = pageIndex * (pd.height + PAGE_GAP)
+    const pageBottom = pageTop + pd.height
+    const allShapes = editor.getCurrentPageShapes()
+    const shapesToDelete = allShapes.filter((s: { x: number; y: number }) => {
+      const cy = s.y
+      return cy >= pageTop && cy < pageBottom
+    })
+    if (shapesToDelete.length > 0) {
+      editor.deleteShapes(shapesToDelete.map((s: { id: string }) => s.id))
+    }
+  }, [pageSize])
 
   // Custom grid component that uses our page/background settings
   const components = React.useMemo(() => ({
     Grid: (props: { x: number; y: number; z: number; size: number }) => (
-      <CanvasBackground {...props} pageSize={pageSize} background={background} pageCount={pageCount} />
+      <CanvasBackground {...props} pageSize={pageSize} background={background} pageCount={pageCount} lineSpacing={customSpacing} />
     ),
-  }), [pageSize, background, pageCount])
+  }), [pageSize, background, pageCount, customSpacing])
 
 
   // Track selected text-note shape for the style bar
@@ -565,6 +745,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
   const [defaultSaved, setDefaultSaved] = React.useState(false)
   const [camera, setCamera] = React.useState({ x: 0, y: 0, z: 1 })
   const [isDrawing, setIsDrawing] = React.useState(false)
+  const [confirmAction, setConfirmAction] = React.useState<{ type: "clear" | "delete"; pageIndex: number } | null>(null)
   const inkLayerRef = React.useRef<InkLayerHandle>(null)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const addDebugRef = React.useRef((_msg: string) => {})
@@ -768,7 +949,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
               height: Math.max(12, 28 * camera.z),
               borderRadius: "50%",
               border: `${Math.max(0.5, 1.5 * camera.z)}px solid #aaa`,
-              background: "transparent",
+              background: "white",
               color: "#aaa",
               fontSize: Math.max(8, 18 * camera.z),
               lineHeight: "1",
@@ -787,6 +968,189 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
           </button>
         ))
       })()}
+
+      {/* Page action buttons — top-right of each page */}
+      {pageSize !== "infinite" && (() => {
+        const pd = PAGE_SIZES.find(p => p.id === pageSize)
+        if (!pd || pd.width === 0) return null
+
+        const actions: React.ReactNode[] = []
+        const pad = 10
+
+        for (let i = 0; i < pageCount; i++) {
+          const pageTop = i * (pd.height + PAGE_GAP)
+          const leftX = (pd.width + camera.x) * camera.z + pad
+          const topY = (pageTop + camera.y) * camera.z + pad
+
+          actions.push(
+            <div
+              key={`page-actions-${i}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute",
+                left: leftX,
+                top: topY,
+                transform: `scale(${camera.z})`,
+                transformOrigin: "top left",
+                display: "flex",
+                flexDirection: "row",
+                gap: 6,
+                zIndex: 4,
+              }}
+            >
+              <button
+                onClick={() => setConfirmAction({ type: "clear", pageIndex: i })}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  height: 28,
+                  padding: "0 10px",
+                  borderRadius: 6,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  color: "#6b7280",
+                  fontSize: 11,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  transition: "color 0.15s, border-color 0.15s, background 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#9ca3af"; e.currentTarget.style.background = "#f9fafb" }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "#6b7280"; e.currentTarget.style.borderColor = "#d1d5db"; e.currentTarget.style.background = "white" }}
+                title="Clear page"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
+                  <path d="M22 21H7" />
+                  <path d="m5 11 9 9" />
+                </svg>
+                <span>Clear page</span>
+              </button>
+              <button
+                onClick={() => { if (pageCount > 1) setConfirmAction({ type: "delete", pageIndex: i }) }}
+                disabled={pageCount <= 1}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  height: 28,
+                  padding: "0 10px",
+                  borderRadius: 6,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  color: "#6b7280",
+                  fontSize: 11,
+                  fontFamily: "inherit",
+                  cursor: pageCount <= 1 ? "default" : "pointer",
+                  opacity: pageCount <= 1 ? 0.4 : 1,
+                  whiteSpace: "nowrap",
+                  transition: "color 0.15s, border-color 0.15s, background 0.15s",
+                }}
+                onMouseEnter={(e) => { if (pageCount > 1) { e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.borderColor = "#fca5a5"; e.currentTarget.style.background = "#fef2f2" } }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "#6b7280"; e.currentTarget.style.borderColor = "#d1d5db"; e.currentTarget.style.background = "white" }}
+                title={pageCount <= 1 ? "Cannot delete the only page" : "Delete page"}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                </svg>
+                <span>Delete page</span>
+              </button>
+            </div>
+          )
+        }
+        return actions
+      })()}
+
+      {/* Confirm dialog for clear/delete page */}
+      {confirmAction && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 50,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setConfirmAction(null)}
+        >
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.2)" }} />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "relative",
+              background: "white",
+              borderRadius: 12,
+              padding: "20px 24px",
+              boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+              border: "1px solid #e5e7eb",
+              maxWidth: 320,
+              width: "100%",
+              fontFamily: "inherit",
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", marginBottom: 6 }}>
+              {confirmAction.type === "clear" ? "Clear page?" : "Delete page?"}
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16, lineHeight: 1.5 }}>
+              {confirmAction.type === "clear"
+                ? "This will remove all content on this page. The page itself will remain."
+                : "This will remove the page and all its content. Shapes on pages below will shift up."}
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setConfirmAction(null)}
+                style={{
+                  height: 32,
+                  padding: "0 14px",
+                  borderRadius: 6,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  color: "#374151",
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#f9fafb" }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "white" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmAction.type === "clear") {
+                    handleClearPageAt(confirmAction.pageIndex)
+                  } else {
+                    handleDeletePageAt(confirmAction.pageIndex)
+                  }
+                  setConfirmAction(null)
+                }}
+                style={{
+                  height: 32,
+                  padding: "0 14px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: confirmAction.type === "delete" ? "#ef4444" : "#111827",
+                  color: "white",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = confirmAction.type === "delete" ? "#dc2626" : "#1f2937" }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = confirmAction.type === "delete" ? "#ef4444" : "#111827" }}
+              >
+                {confirmAction.type === "clear" ? "Clear" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {saving && (
         <div className="absolute right-4 top-2 z-30 text-xs text-muted-foreground">
@@ -982,13 +1346,15 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         for (let i = 0; i < pageCount - 1; i++) {
           const gapTop = ((i + 1) * pd.height + i * PAGE_GAP + cy) * z
           const gapBottom = ((i + 1) * (pd.height + PAGE_GAP) + cy) * z
+          const clampedTop = Math.max(0, gapTop)
+          const clampedHeight = Math.max(0, gapBottom - clampedTop)
           overlays.push(
             <div key={`gap-${i}`} style={{
               position: "absolute",
               left: Math.max(0, pageLeftScreen),
-              top: Math.max(0, gapTop),
+              top: clampedTop,
               width: Math.max(0, pageRightScreen - pageLeftScreen),
-              height: Math.max(0, gapBottom - gapTop),
+              height: clampedHeight,
               background: "#f0f0f0", pointerEvents: "none", zIndex: 2,
             }} />
           )

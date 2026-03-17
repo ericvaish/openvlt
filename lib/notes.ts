@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db"
 import { getVaultPath, safeResolvePath } from "@/lib/vaults/service"
 import { recordStructureEvent } from "@/lib/versions/structure-events"
 import { appendSyncLog, hashContent } from "@/lib/sync/log"
+import { readOpenvltFile, writeOpenvltFile, extractTextFromCanvas, isOpenvltFile } from "@/lib/canvas/openvlt-file"
 import type { NoteMetadata, NoteType, NoteWithContent, VersionTrigger } from "@/types"
 
 const TRASH_AUTO_PURGE_DAYS = 30
@@ -79,7 +80,7 @@ export function createNote(
   // Determine file extension and note type based on title or explicit noteType
   const isExcalidraw = safeTitle.endsWith(".excalidraw")
   const isCanvas = noteType === "canvas"
-  const ext = isExcalidraw ? ".json" : isCanvas ? ".canvas.json" : ".md"
+  const ext = isExcalidraw ? ".json" : isCanvas ? ".openvlt" : ".md"
   const resolvedNoteType: NoteType = isExcalidraw
     ? "excalidraw"
     : isCanvas
@@ -108,11 +109,26 @@ export function createNote(
   const fullPath = safeResolvePath(vaultRoot, filePath)
   const defaultCanvasContent = JSON.stringify({
     type: "openvlt-canvas",
-    version: 1,
+    version: 2,
     document: {},
+    settings: {},
   })
   const fileContent = initialContent ?? (isCanvas ? defaultCanvasContent : `# ${title}\n`)
-  fs.writeFileSync(fullPath, fileContent, "utf-8")
+
+  if (isCanvas) {
+    // Write as .openvlt ZIP using adm-zip (synchronous)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const AdmZip = require("adm-zip")
+    const zip = new AdmZip()
+    const data = JSON.parse(fileContent)
+    zip.addFile("manifest.json", Buffer.from(JSON.stringify({ type: "openvlt-canvas", version: 2, createdAt: new Date().toISOString() })))
+    zip.addFile("document.json", Buffer.from(JSON.stringify(data.document ?? {})))
+    zip.addFile("settings.json", Buffer.from(JSON.stringify(data.settings ?? {})))
+    zip.addFile("content.md", Buffer.from(extractTextFromCanvas(fileContent)))
+    zip.writeZip(fullPath)
+  } else {
+    fs.writeFileSync(fullPath, fileContent, "utf-8")
+  }
 
   const now = new Date().toISOString()
   db.prepare(
@@ -121,7 +137,7 @@ export function createNote(
   ).run(id, title, filePath, parentId, userId, vaultId, now, now, resolvedNoteType)
 
   // Index for full-text search
-  const ftsContent = isExcalidraw || isCanvas ? title : fileContent
+  const ftsContent = isExcalidraw ? title : isCanvas ? (extractTextFromCanvas(fileContent) || title) : fileContent
   db.prepare(
     `INSERT INTO notes_fts (rowid, title, content)
      VALUES ((SELECT rowid FROM notes WHERE id = ?), ?, ?)`
@@ -164,10 +180,16 @@ export function getNote(
   if (!row) return null
 
   const vaultRoot = getVaultPath(vaultId)
-  const fullPath = safeResolvePath(vaultRoot, row.file_path as string)
+  const filePath = row.file_path as string
+  const fullPath = safeResolvePath(vaultRoot, filePath)
   let content = ""
   try {
-    content = fs.readFileSync(fullPath, "utf-8")
+    if (isOpenvltFile(filePath)) {
+      const result = readOpenvltFile(fullPath)
+      content = result.content
+    } else {
+      content = fs.readFileSync(fullPath, "utf-8")
+    }
   } catch {
     // File may have been deleted externally
   }
@@ -264,9 +286,15 @@ export function updateNoteContent(
   }
 
   // Normal save (no conflict)
+  const isOpenvlt = isOpenvltFile(row.file_path)
   let currentContent = ""
   try {
-    currentContent = fs.readFileSync(fullPath, "utf-8")
+    if (isOpenvlt) {
+      const result = readOpenvltFile(fullPath)
+      currentContent = result.content
+    } else {
+      currentContent = fs.readFileSync(fullPath, "utf-8")
+    }
   } catch {}
 
   // Skip save entirely if content hasn't changed
@@ -278,7 +306,21 @@ export function updateNoteContent(
     require("@/lib/versions/grouping") as typeof import("@/lib/versions/grouping")
   saveVersionGrouped(id, currentContent, row.title, userId, trigger)
 
-  fs.writeFileSync(fullPath, content, "utf-8")
+  if (isOpenvlt) {
+    // Write as .openvlt ZIP (synchronous via adm-zip)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const AdmZip = require("adm-zip")
+    const zip = new AdmZip()
+    const data = JSON.parse(content)
+    zip.addFile("manifest.json", Buffer.from(JSON.stringify({ type: "openvlt-canvas", version: 2, updatedAt: new Date().toISOString() })))
+    zip.addFile("document.json", Buffer.from(JSON.stringify(data.document ?? {})))
+    zip.addFile("settings.json", Buffer.from(JSON.stringify(data.settings ?? {})))
+    zip.addFile("content.md", Buffer.from(extractTextFromCanvas(content)))
+    zip.writeZip(fullPath)
+  } else {
+    fs.writeFileSync(fullPath, content, "utf-8")
+  }
+
   const newVersion = currentVersion + 1
   const now = new Date().toISOString()
   db.prepare("UPDATE notes SET version = ?, updated_at = ? WHERE id = ?").run(
@@ -287,11 +329,12 @@ export function updateNoteContent(
     id
   )
 
-  // Update FTS index
+  // Update FTS index — use extracted text for canvas notes
+  const ftsContent = isOpenvlt ? (extractTextFromCanvas(content) || row.title) : content
   db.prepare(
     `UPDATE notes_fts SET title = ?, content = ?
      WHERE rowid = (SELECT rowid FROM notes WHERE id = ?)`
-  ).run(row.title, content, id)
+  ).run(row.title, ftsContent, id)
 
   appendSyncLog(vaultId, "note", id, "update", {
     title: row.title,
@@ -322,9 +365,10 @@ export function updateNoteTitle(
   const dir = path.dirname(row.file_path)
 
   // Preserve the original file extension
+  const isOpenvltCanvas = row.file_path.endsWith(".openvlt")
   const isCanvasFile = row.file_path.endsWith(".canvas.json")
   const isExcalidrawFile = row.file_path.endsWith(".excalidraw.json")
-  const ext = isCanvasFile ? ".canvas.json" : isExcalidrawFile ? ".excalidraw.json" : ".md"
+  const ext = isOpenvltCanvas ? ".openvlt" : isCanvasFile ? ".canvas.json" : isExcalidrawFile ? ".excalidraw.json" : ".md"
   const safeNewTitle = title.replace(/[<>:"/\\|?*]/g, "_")
   const newFileName = `${safeNewTitle}${ext}`
   const newFilePath = dir === "." ? newFileName : path.join(dir, newFileName)

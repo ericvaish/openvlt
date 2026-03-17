@@ -26,7 +26,8 @@ function isExcalidrawFile(metadata: NoteMetadata): boolean {
 function isCanvasFile(metadata: NoteMetadata): boolean {
   return (
     metadata.noteType === "canvas" ||
-    metadata.filePath.endsWith(".canvas.json")
+    metadata.filePath.endsWith(".canvas.json") ||
+    metadata.filePath.endsWith(".openvlt")
   )
 }
 
@@ -87,6 +88,14 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
       strokeSize={canvasState.strokeSize}
       onStrokeColorChange={canvasState.onStrokeColorChange}
       onStrokeSizeChange={canvasState.onStrokeSizeChange}
+      ruleStyle={canvasState.ruleStyle}
+      customSpacing={canvasState.customSpacing}
+      onRuleStyleChange={canvasState.onRuleStyleChange}
+      onCustomSpacingChange={canvasState.onCustomSpacingChange}
+      pressureSensitivity={canvasState.pressureSensitivity}
+      onPressureSensitivityChange={canvasState.onPressureSensitivityChange}
+      drawWithFinger={canvasState.drawWithFinger}
+      onDrawWithFingerChange={canvasState.onDrawWithFingerChange}
     />
   ) : null
 

@@ -56,8 +56,8 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] Style bar closes when switching away from select tool
 - [x] Stroke style dropdown: size slider (S-XL) with preview, 13 colors, save as default
 - [x] Note header actions collapsed into "..." dropdown menu
-- [ ] Pressure sensitivity toggle in pen settings
-- [ ] Collapsible toolbar (show/hide ribbon)
+- [x] Pressure sensitivity toggle in pen settings
+- [x] Collapsible toolbar (show/hide ribbon)
 - [ ] Compact toolbar mode (smaller buttons)
 
 ## Phase 4: Pages and Backgrounds ✅
@@ -75,8 +75,8 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] Wider left margin (60px) with red margin line like a notebook
 - [x] Top margin (60px) for writing space
 - [x] Settings saved to localStorage
-- [ ] Standard notebook rule sizes (college ruled, wide ruled, square grid)
-- [ ] Custom line spacing option
+- [x] Standard notebook rule sizes (college ruled, wide ruled, narrow, custom)
+- [x] Custom line spacing option (slider 12–50px for custom rule style)
 
 ## Phase 5: Layers Panel
 
@@ -87,17 +87,18 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [ ] Uses tldraw's `editor.sendToBack()`, `editor.bringToFront()`, etc.
 - [ ] Toggle button in toolbar to show/hide layer panel
 
-## Phase 6: `.openvlt` ZIP Format
+## Phase 6: `.openvlt` ZIP Format ✅
 
-- [ ] Add `yauzl-promise` dependency for reading ZIP files
-- [ ] Create `openvlt-file.ts` service:
-  - `createOpenvltFile(canvasJson, textContent, assets)` — create ZIP
-  - `readOpenvltFile(filePath)` — extract canvas JSON and assets
-  - `updateOpenvltFile(filePath, canvasJson, textContent)` — rewrite ZIP
-- [ ] Migrate note CRUD to use `.openvlt` files for canvas notes
-- [ ] Text extraction from text-note shapes into `content.md` inside ZIP
-- [ ] Migration tool: convert existing `.canvas.json` → `.openvlt`
-- [ ] Update FTS index with extracted text content for search
+- [x] Add `adm-zip` dependency for reading ZIP files, `archiver` for writing
+- [x] Create `openvlt-file.ts` service:
+  - `createOpenvltBuffer(canvasJson)` — create ZIP buffer
+  - `readOpenvltFile(filePath)` — extract canvas JSON and text content
+  - `writeOpenvltFile(filePath, canvasJson)` — atomic write ZIP
+  - `extractTextFromCanvas(canvasJson)` — extract text from text-note shapes
+- [x] Migrate note CRUD to use `.openvlt` files for canvas notes
+- [x] Text extraction from text-note shapes into `content.md` inside ZIP
+- [x] DB migration v10: convert existing `.canvas.json` → `.openvlt`
+- [x] Update FTS index with extracted text content for search
 
 ## Phase 7: Stylus vs Finger Input ✅
 
@@ -111,8 +112,8 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] Pen/stylus = uses active tool (handwrite by default)
 - [x] Double-tap detection for creating text blocks on touch
 - [x] Tap outside text block to close/deselect
-- [ ] "Draw with finger" toggle option (when enabled, finger draws too)
-- [ ] Store preference in localStorage
+- [x] "Draw with finger" toggle option (when enabled, finger draws too)
+- [x] Store preference in localStorage
 
 ## Phase 7.5: Custom Handwrite Tool ✅
 

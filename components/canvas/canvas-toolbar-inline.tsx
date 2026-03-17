@@ -15,14 +15,17 @@ import {
   Undo2Icon,
   Redo2Icon,
   ChevronDownIcon,
+  ChevronUpIcon,
   GridIcon,
   PaletteIcon,
 } from "lucide-react"
 import {
   PAGE_SIZES,
   BACKGROUND_PATTERNS,
+  RULE_STYLES,
   type PageSizeId,
   type BackgroundPattern,
+  type RuleStyle,
 } from "@/lib/canvas/page-config"
 
 const shapeTools = [
@@ -61,9 +64,17 @@ interface CanvasToolbarInlineProps {
   strokeSize: string
   onStrokeColorChange: (color: string) => void
   onStrokeSizeChange: (size: string) => void
+  ruleStyle: RuleStyle
+  customSpacing: number
+  onRuleStyleChange: (style: RuleStyle) => void
+  onCustomSpacingChange: (spacing: number) => void
+  pressureSensitivity: boolean
+  onPressureSensitivityChange: (enabled: boolean) => void
+  drawWithFinger: boolean
+  onDrawWithFingerChange: (enabled: boolean) => void
 }
 
-export function CanvasToolbarInline({ editor, pageSize: initialPageSize, background: initialBackground, pageCount, onPageSizeChange, onBackgroundChange, onAddPage, onRemovePage, strokeColor, strokeSize, onStrokeColorChange, onStrokeSizeChange }: CanvasToolbarInlineProps) {
+export function CanvasToolbarInline({ editor, pageSize: initialPageSize, background: initialBackground, pageCount, onPageSizeChange, onBackgroundChange, onAddPage, onRemovePage, strokeColor, strokeSize, onStrokeColorChange, onStrokeSizeChange, ruleStyle, customSpacing, onRuleStyleChange, onCustomSpacingChange, pressureSensitivity, onPressureSensitivityChange, drawWithFinger, onDrawWithFingerChange }: CanvasToolbarInlineProps) {
   const [currentTool, setCurrentTool] = React.useState("hand")
   const [shapesOpen, setShapesOpen] = React.useState(false)
   const [pageMenuOpen, setPageMenuOpen] = React.useState(false)
@@ -76,6 +87,7 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
   const [currentPageSize, setCurrentPageSize] = React.useState(initialPageSize)
   const [currentBackground, setCurrentBackground] = React.useState(initialBackground)
   const [activeGeo, setActiveGeo] = React.useState("rectangle")
+  const [collapsed, setCollapsed] = React.useState(false)
   const shapesRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
@@ -103,7 +115,22 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
     return () => document.removeEventListener("mousedown", handler)
   }, [shapesOpen, pageMenuOpen, strokeMenuOpen])
 
+  const [currentRuleStyle, setCurrentRuleStyle] = React.useState(ruleStyle)
+  const [currentCustomSpacing, setCurrentCustomSpacing] = React.useState(customSpacing)
+  const [currentPressure, setCurrentPressure] = React.useState(pressureSensitivity)
+  const [currentDrawWithFinger, setCurrentDrawWithFinger] = React.useState(drawWithFinger)
+
   if (!editor) return null
+
+  if (collapsed) {
+    return (
+      <div className="flex items-center">
+        <button onClick={() => setCollapsed(false)} className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" title="Show toolbar">
+          <ChevronDownIcon className="size-3.5" />
+        </button>
+      </div>
+    )
+  }
 
   function selectTool(toolId: string) {
     if (toolId.startsWith("geo-")) {
@@ -225,6 +252,91 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
                 ))}
               </div>
             </div>
+            {/* Pressure sensitivity toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-medium uppercase text-muted-foreground">Pressure</span>
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  const next = !currentPressure
+                  setCurrentPressure(next)
+                  onPressureSensitivityChange(next)
+                  // Save immediately so handwrite tool picks it up
+                  try {
+                    const stored = localStorage.getItem("openvlt:canvas-settings")
+                    const settings = stored ? JSON.parse(stored) : {}
+                    settings.pressureSensitivity = next
+                    localStorage.setItem("openvlt:canvas-settings", JSON.stringify(settings))
+                  } catch {}
+                }}
+                style={{
+                  position: "relative",
+                  width: 36,
+                  height: 20,
+                  borderRadius: 10,
+                  border: "none",
+                  background: currentPressure ? "var(--color-primary, #3b82f6)" : "#71717a",
+                  cursor: "pointer",
+                  padding: 0,
+                  transition: "background 0.2s",
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 2,
+                    left: currentPressure ? 18 : 2,
+                    width: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    background: "white",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
+            {/* Draw with finger toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-medium uppercase text-muted-foreground">Draw with finger</span>
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  const next = !currentDrawWithFinger
+                  setCurrentDrawWithFinger(next)
+                  onDrawWithFingerChange(next)
+                }}
+                style={{
+                  position: "relative",
+                  width: 36,
+                  height: 20,
+                  borderRadius: 10,
+                  border: "none",
+                  background: currentDrawWithFinger ? "var(--color-primary, #3b82f6)" : "#71717a",
+                  cursor: "pointer",
+                  padding: 0,
+                  transition: "background 0.2s",
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 2,
+                    left: currentDrawWithFinger ? 18 : 2,
+                    width: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    background: "white",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
             <button
               onClick={() => {
                 localStorage.setItem("openvlt:stroke-defaults", JSON.stringify({
@@ -344,9 +456,58 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
                 ))}
               </div>
             </div>
+            {/* Rule style — only shown for ruled/grid/dot-grid backgrounds */}
+            {currentBackground !== "blank" && (
+              <div>
+                <div className="mb-1 text-[10px] font-medium uppercase text-muted-foreground">Line Spacing</div>
+                <div className="flex flex-wrap gap-1">
+                  {RULE_STYLES.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => {
+                        setCurrentRuleStyle(r.id)
+                        onRuleStyleChange(r.id)
+                        if (r.id !== "custom") {
+                          setCurrentCustomSpacing(r.spacing)
+                          onCustomSpacingChange(r.spacing)
+                        }
+                      }}
+                      className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                        currentRuleStyle === r.id
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+                      }`}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+                {currentRuleStyle === "custom" && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="text-[9px] text-muted-foreground">Tight</span>
+                    <input
+                      type="range"
+                      min={12}
+                      max={50}
+                      step={1}
+                      value={currentCustomSpacing}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value)
+                        setCurrentCustomSpacing(v)
+                        onCustomSpacingChange(v)
+                      }}
+                      className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+                    />
+                    <span className="text-[9px] text-muted-foreground">Wide</span>
+                    <span className="text-[9px] text-muted-foreground w-6 text-right">{currentCustomSpacing}px</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
+
     </div>
   )
 }
