@@ -2,6 +2,17 @@
 
 import * as React from "react"
 import { TrashIcon, RotateCcwIcon, Trash2Icon } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
 import { useTabStore } from "@/lib/stores/tab-store"
 import type { NoteMetadata } from "@/types"
 
@@ -9,6 +20,8 @@ export function TrashPanel() {
   const { openTab, closeTab } = useTabStore()
   const [notes, setNotes] = React.useState<NoteMetadata[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [deleteTarget, setDeleteTarget] = React.useState<string | null>(null)
+  const [deleteAllOpen, setDeleteAllOpen] = React.useState(false)
 
   const fetchTrashed = React.useCallback(async () => {
     try {
@@ -44,7 +57,6 @@ export function TrashPanel() {
   }
 
   async function handlePermanentDelete(noteId: string) {
-    if (!confirm("Permanently delete this note? This cannot be undone.")) return
     try {
       const res = await fetch(`/api/notes/${noteId}`, {
         method: "DELETE",
@@ -58,6 +70,24 @@ export function TrashPanel() {
     }
   }
 
+  async function handleDeleteAll() {
+    const toDelete = [...notes]
+    for (const note of toDelete) {
+      try {
+        const res = await fetch(`/api/notes/${note.id}`, {
+          method: "DELETE",
+        })
+        if (res.ok) {
+          closeTab(note.id)
+        }
+      } catch {
+        // silently fail
+      }
+    }
+    setNotes([])
+    window.dispatchEvent(new Event("openvlt:tree-refresh"))
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
@@ -66,6 +96,17 @@ export function TrashPanel() {
         <span className="text-sm text-muted-foreground">
           ({notes.length})
         </span>
+        {notes.length > 0 && (
+          <Button
+            variant="destructive"
+            size="sm"
+            className="ml-auto h-7 text-xs"
+            onClick={() => setDeleteAllOpen(true)}
+          >
+            <Trash2Icon className="size-3.5" />
+            Delete All
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -106,7 +147,7 @@ export function TrashPanel() {
                     <RotateCcwIcon className="size-4" />
                   </button>
                   <button
-                    onClick={() => handlePermanentDelete(note.id)}
+                    onClick={() => setDeleteTarget(note.id)}
                     title="Delete permanently"
                     className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                   >
@@ -118,6 +159,62 @@ export function TrashPanel() {
           </div>
         )}
       </div>
+
+      {/* Single note delete confirmation */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete this note?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The note and all its data will be
+              permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deleteTarget) handlePermanentDelete(deleteTarget)
+                setDeleteTarget(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete all confirmation */}
+      <AlertDialog open={deleteAllOpen} onOpenChange={setDeleteAllOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete all trashed notes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {notes.length}{" "}
+              {notes.length === 1 ? "note" : "notes"}. This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                handleDeleteAll()
+                setDeleteAllOpen(false)
+              }}
+            >
+              Delete All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

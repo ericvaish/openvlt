@@ -27,7 +27,13 @@ function TabCurve({ side }: { side: "left" | "right" }) {
 }
 
 export function TabBar() {
-  const { tabs, activeTabId, setActiveTab, closeTab, openTab } = useTabStore()
+  const { tabs, activeTabId, setActiveTab, closeTab, openTab, reorderTab } =
+    useTabStore()
+  const [dropTargetIndex, setDropTargetIndex] = React.useState<number | null>(
+    null
+  )
+  const [dropSide, setDropSide] = React.useState<"left" | "right" | null>(null)
+  const dragSourceIndex = React.useRef<number | null>(null)
 
   if (tabs.length === 0) return null
 
@@ -38,8 +44,9 @@ export function TabBar() {
     }
   }
 
-  function handleDragStart(e: React.DragEvent, tab: Tab) {
+  function handleDragStart(e: React.DragEvent, tab: Tab, index: number) {
     draggedTab = tab
+    dragSourceIndex.current = index
     e.dataTransfer.effectAllowed = "move"
     e.dataTransfer.setData("text/plain", tab.noteId)
     if (e.currentTarget instanceof HTMLElement) {
@@ -49,9 +56,36 @@ export function TabBar() {
 
   function handleDragEnd(e: React.DragEvent) {
     draggedTab = null
+    dragSourceIndex.current = null
+    setDropTargetIndex(null)
+    setDropSide(null)
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = "1"
     }
+  }
+
+  function handleDragOverTab(e: React.DragEvent, index: number) {
+    if (dragSourceIndex.current === null) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+    const rect = e.currentTarget.getBoundingClientRect()
+    const midX = rect.left + rect.width / 2
+    const side = e.clientX < midX ? "left" : "right"
+    setDropTargetIndex(index)
+    setDropSide(side)
+  }
+
+  function handleDropOnTab(e: React.DragEvent, index: number) {
+    e.preventDefault()
+    const fromIndex = dragSourceIndex.current
+    if (fromIndex === null) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const midX = rect.left + rect.width / 2
+    let toIndex = e.clientX < midX ? index : index + 1
+    if (toIndex > fromIndex) toIndex--
+    reorderTab(fromIndex, toIndex)
+    setDropTargetIndex(null)
+    setDropSide(null)
   }
 
   return (
@@ -63,17 +97,28 @@ export function TabBar() {
           const prevIsActive = index > 0 && tabs[index - 1].noteId === activeTabId
           // Show separator between two inactive tabs (hide next to active tab)
           const showSeparator = !isActive && !prevIsActive && index > 0
+          const showDropLeft = dropTargetIndex === index && dropSide === "left"
+          const showDropRight = dropTargetIndex === index && dropSide === "right"
           return (
             <React.Fragment key={tab.noteId}>
-              {showSeparator && (
+              {showSeparator && !showDropLeft && (
                 <span className="self-center h-4 w-px shrink-0 bg-foreground/8" />
+              )}
+              {showDropLeft && (
+                <span className="self-stretch w-0.5 shrink-0 rounded-full bg-primary" />
               )}
               <button
                 draggable
                 onClick={() => setActiveTab(tab.noteId)}
                 onMouseDown={(e) => handleMouseDown(e, tab.noteId)}
-                onDragStart={(e) => handleDragStart(e, tab)}
+                onDragStart={(e) => handleDragStart(e, tab, index)}
                 onDragEnd={handleDragEnd}
+                onDragOver={(e) => handleDragOverTab(e, index)}
+                onDragLeave={() => {
+                  setDropTargetIndex(null)
+                  setDropSide(null)
+                }}
+                onDrop={(e) => handleDropOnTab(e, index)}
                 className={`group/tab relative flex min-w-0 max-w-[200px] shrink-0 items-center gap-1.5 px-3 text-sm transition-all ${
                   isActive
                     ? "z-10 h-9 rounded-t-lg bg-background text-foreground"
@@ -98,6 +143,9 @@ export function TabBar() {
                   </>
                 )}
               </button>
+              {showDropRight && (
+                <span className="self-stretch w-0.5 shrink-0 rounded-full bg-primary" />
+              )}
             </React.Fragment>
           )
         })}

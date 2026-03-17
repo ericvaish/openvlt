@@ -89,10 +89,18 @@ export function BookmarksPanel() {
       {bookmarks.map((bookmark) => {
         const Icon = iconForType[bookmark.type]
         return (
-          <button
+          <div
             key={bookmark.id}
-            className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            role="button"
+            tabIndex={0}
+            className="group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             onClick={() => handleClick(bookmark)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                handleClick(bookmark)
+              }
+            }}
             title={
               bookmark.type === "heading"
                 ? `${bookmark.label} → ${bookmark.data}`
@@ -111,7 +119,7 @@ export function BookmarksPanel() {
             >
               <XIcon className="size-3" />
             </button>
-          </button>
+          </div>
         )
       })}
     </>
@@ -132,9 +140,10 @@ export async function addBookmark(
       body: JSON.stringify({ type, label, targetId, data }),
     })
     if (res.ok) {
-      const bookmark = await res.json()
+      const result = await res.json()
       window.dispatchEvent(new Event("openvlt:bookmarks-refresh"))
-      return bookmark
+      if (result.removed) return null
+      return result as Bookmark
     }
   } catch {
     // silently fail

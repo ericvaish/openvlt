@@ -128,12 +128,25 @@
 }
 
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  15% { transform: translateX(-6px) rotate(-2deg); }
-  30% { transform: translateX(5px) rotate(1.5deg); }
-  45% { transform: translateX(-4px) rotate(-1deg); }
-  60% { transform: translateX(3px) rotate(0.5deg); }
-  75% { transform: translateX(-2px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(-6px) rotate(-2deg);
+  }
+  30% {
+    transform: translateX(5px) rotate(1.5deg);
+  }
+  45% {
+    transform: translateX(-4px) rotate(-1deg);
+  }
+  60% {
+    transform: translateX(3px) rotate(0.5deg);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
 }
 
 /*
@@ -302,12 +315,24 @@
   margin-right: 0.5em;
 }
 
-.tiptap h1::before { content: "#"; }
-.tiptap h2::before { content: "##"; }
-.tiptap h3::before { content: "###"; }
-.tiptap h4::before { content: "####"; }
-.tiptap h5::before { content: "#####"; }
-.tiptap h6::before { content: "######"; }
+.tiptap h1::before {
+  content: "#";
+}
+.tiptap h2::before {
+  content: "##";
+}
+.tiptap h3::before {
+  content: "###";
+}
+.tiptap h4::before {
+  content: "####";
+}
+.tiptap h5::before {
+  content: "#####";
+}
+.tiptap h6::before {
+  content: "######";
+}
 
 /* Show markers inline on active node */
 .tiptap h1[data-active]::before,
@@ -540,7 +565,9 @@
 
 .tiptap ul[data-type="taskList"] li > label {
   flex-shrink: 0;
-  margin-top: 0.25em;
+  display: flex;
+  align-items: center;
+  height: 1lh;
 }
 
 .tiptap ul[data-type="taskList"] li > div {
@@ -906,3 +933,104 @@
   display: none;
 }
 
+/*
+ * ══════════════════════════════════════════════════════
+ * WIKI-LINK INLINE NODE
+ * [[Note Title]] links to other notes in the vault
+ * ══════════════════════════════════════════════════════
+ */
+
+.wiki-link {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 1px;
+  transition:
+    color 0.15s ease,
+    text-decoration-color 0.15s ease;
+}
+
+.wiki-link:hover {
+  color: var(--primary);
+  text-decoration-color: var(--primary);
+  filter: brightness(1.2);
+}
+
+.wiki-link.ProseMirror-selectednode {
+  background: var(--accent);
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* Show [[ and ]] brackets when wiki-link is active */
+.wiki-link[data-wiki-active]::before {
+  content: "[[";
+  font-family: var(--font-mono);
+  color: var(--muted-foreground);
+  opacity: 0.5;
+  font-size: 0.85em;
+}
+.wiki-link[data-wiki-active]::after {
+  content: "]]";
+  font-family: var(--font-mono);
+  color: var(--muted-foreground);
+  opacity: 0.5;
+  font-size: 0.85em;
+}
+
+/* ── Wiki-link suggestion popup ── */
+.wiki-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.wiki-link-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--foreground);
+  font-size: 13px;
+  width: 100%;
+}
+
+.wiki-link-item:hover,
+.wiki-link-item.is-selected {
+  background: var(--accent);
+}
+
+.wiki-link-item-title {
+  font-weight: 500;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-link-empty {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  cursor: default;
+}
+
+.wiki-link-empty:hover {
+  background: transparent;
+}

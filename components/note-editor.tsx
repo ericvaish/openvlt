@@ -4,7 +4,7 @@ import * as React from "react"
 import { useEditor, EditorContent, type Editor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
-import { Markdown } from "tiptap-markdown"
+import { Markdown } from "@tiptap/markdown"
 import Underline from "@tiptap/extension-underline"
 import Link from "@tiptap/extension-link"
 import {
@@ -25,6 +25,10 @@ import { AttachmentEmbed } from "@/lib/editor/attachment-embed"
 import { SlashCommands } from "@/lib/editor/slash-commands"
 import { Callout } from "@/lib/editor/callout"
 import { ToggleBlock } from "@/lib/editor/toggle-block"
+import { WikiLink } from "@/lib/editor/wiki-link"
+import { TaskListInputRule } from "@/lib/editor/task-list-input-rule"
+import { EmbedBlock } from "@/lib/editor/embed-block"
+import { useTabStore } from "@/lib/stores/tab-store"
 
 const lowlight = createLowlight(common)
 import { uploadAndInsert } from "@/lib/editor/upload"
@@ -66,7 +70,10 @@ export function NoteEditor({
   } | null>(null)
   const editorRef = React.useRef<Editor | null>(null)
   const [historyOpen, setHistoryOpen] = React.useState(false)
-  const [historyFolderId, setHistoryFolderId] = React.useState<string | null>(null)
+  const [historyFolderId, setHistoryFolderId] = React.useState<string | null>(
+    null
+  )
+  const { openTab } = useTabStore()
 
   // Listen for history toggle event from note header
   React.useEffect(() => {
@@ -84,7 +91,11 @@ export function NoteEditor({
   // Keyboard shortcut: Cmd+Shift+H
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "h") {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "h"
+      ) {
         e.preventDefault()
         setHistoryOpen((prev) => !prev)
       }
@@ -92,6 +103,30 @@ export function NoteEditor({
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [])
+
+  // Handle wiki-link clicks: resolve title to note ID and open tab
+  React.useEffect(() => {
+    const handler = async (e: Event) => {
+      const title = (e as CustomEvent).detail?.title
+      if (!title) return
+
+      try {
+        const res = await fetch(
+          `/api/notes/resolve?title=${encodeURIComponent(title)}`
+        )
+        if (res.ok) {
+          const data = await res.json()
+          if (data.id) {
+            openTab(data.id, data.title || title)
+          }
+        }
+      } catch {
+        // Silently fail if resolve endpoint is unavailable
+      }
+    }
+    window.addEventListener("openvlt:wiki-link-click", handler)
+    return () => window.removeEventListener("openvlt:wiki-link-click", handler)
+  }, [openTab])
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -109,9 +144,7 @@ export function NoteEditor({
         placeholder: "Start writing...",
       }),
       Markdown.configure({
-        html: true,
-        transformPastedText: true,
-        transformCopiedText: true,
+        markedOptions: { gfm: true },
       }),
       Underline,
       Link.configure({
@@ -126,6 +159,7 @@ export function NoteEditor({
       TableHeader,
       TaskList,
       TaskItem.configure({ nested: true }),
+      TaskListInputRule,
       Image.configure({ inline: true }),
       AttachmentEmbed,
       SlashCommands,
@@ -134,8 +168,11 @@ export function NoteEditor({
       HeadingFold,
       Callout,
       ToggleBlock,
+      WikiLink,
+      EmbedBlock,
     ],
     content: initialContent,
+    contentType: "markdown",
     editorProps: {
       attributes: {
         class:
@@ -166,9 +203,10 @@ export function NoteEditor({
       },
       handleClick: (view, pos, event) => {
         if (!(event.metaKey || event.ctrlKey)) return false
-        const attrs = view.state.doc.resolve(pos).marks().find(
-          (m) => m.type.name === "link"
-        )?.attrs
+        const attrs = view.state.doc
+          .resolve(pos)
+          .marks()
+          .find((m) => m.type.name === "link")?.attrs
         if (attrs?.href) {
           window.open(attrs.href, "_blank", "noopener,noreferrer")
           return true
@@ -191,8 +229,7 @@ export function NoteEditor({
       }
 
       saveTimeoutRef.current = setTimeout(async () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const content = (editor.storage as any).markdown.getMarkdown()
+        const content = (editor as any).getMarkdown()
 
         // Skip save if content hasn't changed
         if (content === lastSavedContentRef.current) return
@@ -215,7 +252,9 @@ export function NoteEditor({
             lastSavedContentRef.current = content
             // If server auto-merged, update editor content
             if (data.status === "merged" && data.content !== content) {
-              editor.commands.setContent(data.content)
+              editor.commands.setContent(data.content, {
+                contentType: "markdown",
+              })
               lastSavedContentRef.current = data.content
             }
             // Refresh sidebar tree if attachments were cleaned up
@@ -245,8 +284,7 @@ export function NoteEditor({
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault()
         if (!editor) return
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const content = (editor.storage as any).markdown.getMarkdown()
+        const content = (editor as any).getMarkdown()
         if (content === lastSavedContentRef.current) return
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
 
@@ -295,7 +333,7 @@ export function NoteEditor({
   // Update editor content when noteId changes
   React.useEffect(() => {
     if (editor && initialContent !== undefined) {
-      editor.commands.setContent(initialContent)
+      editor.commands.setContent(initialContent, { contentType: "markdown" })
       lastSavedContentRef.current = initialContent
     }
   }, [noteId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -353,10 +391,7 @@ export function NoteEditor({
               editor={editor}
               scrollContainerRef={scrollRef}
             />
-            <LinkHoverTooltip
-              editor={editor}
-              scrollContainerRef={scrollRef}
-            />
+            <LinkHoverTooltip editor={editor} scrollContainerRef={scrollRef} />
             <BacklinksPanel noteId={noteId} />
           </div>
           <OutlinePanel editor={editor} />
@@ -371,9 +406,12 @@ export function NoteEditor({
                   .then((r) => r.json())
                   .then((data) => {
                     if (editor && data.content) {
-                      editor.commands.setContent(data.content)
+                      editor.commands.setContent(data.content, {
+                        contentType: "markdown",
+                      })
                       lastSavedContentRef.current = data.content
-                      versionRef.current = data.metadata?.version ?? versionRef.current
+                      versionRef.current =
+                        data.metadata?.version ?? versionRef.current
                     }
                   })
                   .catch(() => {})
@@ -396,7 +434,7 @@ export function NoteEditor({
             const content =
               choice === "mine" ? conflict.myContent : conflict.serverContent
             if (editor) {
-              editor.commands.setContent(content)
+              editor.commands.setContent(content, { contentType: "markdown" })
             }
             // Force save with no baseVersion (unconditional overwrite)
             const res = await fetch(`/api/notes/${noteId}`, {

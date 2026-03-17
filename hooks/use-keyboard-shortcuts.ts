@@ -46,11 +46,12 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[]) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.repeat) return
+      if (!event.key) return
 
       for (const shortcut of shortcuts) {
         const keyMatch =
           event.key.toLowerCase() === shortcut.key.toLowerCase() ||
-          event.code.toLowerCase() === shortcut.key.toLowerCase()
+          (event.code && event.code.toLowerCase() === shortcut.key.toLowerCase())
 
         if (!keyMatch) continue
         if (!matchesModifiers(event, shortcut.modifiers)) continue

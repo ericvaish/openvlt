@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   listBookmarks,
   createBookmark,
+  deleteBookmark,
+  findExistingBookmark,
   updateBookmarkOrder,
 } from "@/lib/bookmarks"
 import { AuthError, requireAuthWithVault } from "@/lib/auth/middleware"
@@ -43,6 +45,19 @@ export async function POST(request: NextRequest) {
         { error: "Invalid bookmark type" },
         { status: 400 }
       )
+    }
+
+    // Toggle: if bookmark already exists, remove it
+    const existing = findExistingBookmark(
+      user.id,
+      vaultId,
+      type,
+      targetId,
+      data
+    )
+    if (existing) {
+      deleteBookmark(existing.id, user.id, vaultId)
+      return NextResponse.json({ removed: true, id: existing.id })
     }
 
     const bookmark = createBookmark(

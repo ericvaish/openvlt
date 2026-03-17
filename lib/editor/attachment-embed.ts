@@ -151,38 +151,18 @@ export const AttachmentEmbed = Node.create({
     }
   },
 
-  addStorage() {
-    return {
-      markdown: {
-        serialize(
-          state: { write: (s: string) => void; closeBlock: (n: unknown) => void },
-          node: { attrs: AttachmentEmbedAttrs; isBlock: boolean }
-        ) {
-          const a = node.attrs
-          const isImage = a.mimeType.startsWith("image/")
+  renderMarkdown: (node: any) => {
+    const a = node.attrs as AttachmentEmbedAttrs | undefined
+    if (!a) return ""
+    const isImage = a.mimeType.startsWith("image/")
 
-          if (isImage) {
-            // Wrapped in <div> so markdown-it treats it as block HTML (not inline)
-            // The <img> itself is standard — renders on GitHub, GitLab, any markdown viewer
-            const w = resolveWidth(a.displaySize)
-            const h = resolveHeight(a.displaySize)
-            const widthAttr = w ? ` width="${w}"` : ""
-            const heightAttr = h ? ` height="${h}"` : ""
-            state.write(
-              `<div data-image-embed><img src="/api/attachments/${a.attachmentId}" alt="${a.fileName}"${widthAttr}${heightAttr} data-attachment-id="${a.attachmentId}" data-mimetype="${a.mimeType}" data-size-bytes="${a.sizeBytes}"></div>`
-            )
-          } else {
-            // Non-image attachments use data-attachment div
-            state.write(
-              `<div data-attachment data-attachment-id="${a.attachmentId}" data-filename="${a.fileName}" data-mimetype="${a.mimeType}" data-size-bytes="${a.sizeBytes}" data-display-size="${a.displaySize}"></div>`
-            )
-          }
-          state.closeBlock(node)
-        },
-        parse: {
-          // HTML blocks are handled by markdown-it; parseHTML() picks them up
-        },
-      },
+    if (isImage) {
+      const w = resolveWidth(a.displaySize)
+      const h = resolveHeight(a.displaySize)
+      const widthAttr = w ? ` width="${w}"` : ""
+      const heightAttr = h ? ` height="${h}"` : ""
+      return `<div data-image-embed><img src="/api/attachments/${a.attachmentId}" alt="${a.fileName}"${widthAttr}${heightAttr} data-attachment-id="${a.attachmentId}" data-mimetype="${a.mimeType}" data-size-bytes="${a.sizeBytes}"></div>\n`
     }
+    return `<div data-attachment data-attachment-id="${a.attachmentId}" data-filename="${a.fileName}" data-mimetype="${a.mimeType}" data-size-bytes="${a.sizeBytes}" data-display-size="${a.displaySize}"></div>\n`
   },
 })

@@ -12,9 +12,18 @@ import {
   TrashIcon,
   UserIcon,
   KeyIcon,
+  CloudIcon,
+  RefreshCwIcon,
+  LinkIcon,
+  UnlinkIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  LoaderIcon,
+  PlayIcon,
+  ServerIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { User } from "@/types"
+import type { User, BackupFrequency, BackupRun, SyncPairing } from "@/types"
 
 export function SettingsPanel() {
   const router = useRouter()
@@ -23,10 +32,79 @@ export function SettingsPanel() {
   const [versionRetention, setVersionRetention] = React.useState("365")
   const [attachmentRetention, setAttachmentRetention] = React.useState("7")
 
+  // Cloud Backup state
+  const [backupProvider, setBackupProvider] = React.useState<{
+    id: string
+    provider: string
+    displayName: string | null
+  } | null>(null)
+  const [backupConfig, setBackupConfig] = React.useState<{
+    id: string
+    enabled: boolean
+    frequency: BackupFrequency
+    maxVersions: number
+  } | null>(null)
+  const [backupHistory, setBackupHistory] = React.useState<BackupRun[]>([])
+  const [backupLoading, setBackupLoading] = React.useState(false)
+  const [backupPassword, setBackupPassword] = React.useState("")
+  const [backupFrequency, setBackupFrequency] =
+    React.useState<BackupFrequency>("daily")
+  const [backupMaxVersions, setBackupMaxVersions] = React.useState("10")
+
+  // Peer Sync state
+  const [syncPeer, setSyncPeer] = React.useState<{
+    id: string
+    displayName: string
+  } | null>(null)
+  const [syncPairings, setSyncPairings] = React.useState<SyncPairing[]>([])
+  const [pairUrl, setPairUrl] = React.useState("")
+  const [pairUsername, setPairUsername] = React.useState("")
+  const [pairPassword, setPairPassword] = React.useState("")
+  const [pairingLoading, setPairingLoading] = React.useState(false)
+
   React.useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => setUser(data?.user ?? null))
+      .catch(() => {})
+  }, [])
+
+  // Load backup state
+  React.useEffect(() => {
+    fetch("/api/backup/providers")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((providers: { id: string; provider: string; displayName: string | null }[]) => {
+        if (providers.length > 0) setBackupProvider(providers[0])
+      })
+      .catch(() => {})
+
+    fetch("/api/backup/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((config: { id: string; enabled: boolean; frequency: BackupFrequency; maxVersions: number } | null) => {
+        if (config) {
+          setBackupConfig(config)
+          setBackupFrequency(config.frequency)
+          setBackupMaxVersions(String(config.maxVersions))
+        }
+      })
+      .catch(() => {})
+
+    fetch("/api/backup/history")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setBackupHistory)
+      .catch(() => {})
+  }, [])
+
+  // Load sync state
+  React.useEffect(() => {
+    fetch("/api/sync/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { peer: { id: string; displayName: string }; pairings: SyncPairing[] } | null) => {
+        if (data) {
+          setSyncPeer(data.peer)
+          setSyncPairings(data.pairings)
+        }
+      })
       .catch(() => {})
   }, [])
 
@@ -189,6 +267,369 @@ export function SettingsPanel() {
                 <DownloadIcon className="mr-2 size-3.5" />
                 Export All Notes (ZIP)
               </Button>
+            </div>
+          </section>
+
+          {/* Cloud Backup */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold">Cloud Backup</h2>
+            <div className="space-y-4 rounded-lg border p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                    <CloudIcon className="size-5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Google Drive</p>
+                    <p className="text-sm text-muted-foreground">
+                      {backupProvider ? "Connected" : "Not connected"}
+                    </p>
+                  </div>
+                </div>
+                {backupProvider ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await fetch(`/api/backup/providers/${backupProvider.id}`, { method: "DELETE" })
+                      setBackupProvider(null)
+                      setBackupConfig(null)
+                    }}
+                  >
+                    <UnlinkIcon className="mr-2 size-3.5" />
+                    Disconnect
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const res = await fetch("/api/backup/providers", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ provider: "google_drive" }),
+                      })
+                      if (res.ok) {
+                        const { authUrl } = await res.json()
+                        window.location.href = authUrl
+                      }
+                    }}
+                  >
+                    <LinkIcon className="mr-2 size-3.5" />
+                    Connect Google Drive
+                  </Button>
+                )}
+              </div>
+
+              {backupProvider && !backupConfig && (
+                <div className="space-y-3 border-t pt-4">
+                  <p className="text-sm font-medium">Set up automatic backups</p>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm text-muted-foreground">Frequency</label>
+                    <select
+                      value={backupFrequency}
+                      onChange={(e) => setBackupFrequency(e.target.value as BackupFrequency)}
+                      className="h-8 rounded-md border bg-background px-2 text-sm"
+                    >
+                      <option value="hourly">Every hour</option>
+                      <option value="every_6h">Every 6 hours</option>
+                      <option value="every_12h">Every 12 hours</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm text-muted-foreground">History versions to keep</label>
+                    <select
+                      value={backupMaxVersions}
+                      onChange={(e) => setBackupMaxVersions(e.target.value)}
+                      className="h-8 rounded-md border bg-background px-2 text-sm"
+                    >
+                      <option value="5">5</option>
+                      <option value="10">10</option>
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground">
+                      Backup password (needed to restore)
+                    </label>
+                    <input
+                      type="password"
+                      value={backupPassword}
+                      onChange={(e) => setBackupPassword(e.target.value)}
+                      placeholder="Enter a backup password"
+                      className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      All backups are encrypted. You will need this password to restore notes.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={!backupPassword}
+                    onClick={async () => {
+                      const res = await fetch("/api/backup/config", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          providerId: backupProvider.id,
+                          frequency: backupFrequency,
+                          backupPassword,
+                          maxVersions: parseInt(backupMaxVersions, 10),
+                        }),
+                      })
+                      if (res.ok) {
+                        const config = await res.json()
+                        setBackupConfig(config)
+                        setBackupPassword("")
+                      }
+                    }}
+                  >
+                    Enable Backup
+                  </Button>
+                </div>
+              )}
+
+              {backupProvider && backupConfig && (
+                <div className="space-y-3 border-t pt-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">
+                      Automatic backups{" "}
+                      <span className={backupConfig.enabled ? "text-green-600" : "text-muted-foreground"}>
+                        {backupConfig.enabled ? "enabled" : "paused"}
+                      </span>
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        const res = await fetch("/api/backup/config", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ enabled: !backupConfig.enabled }),
+                        })
+                        if (res.ok) {
+                          setBackupConfig({ ...backupConfig, enabled: !backupConfig.enabled })
+                        }
+                      }}
+                    >
+                      {backupConfig.enabled ? "Pause" : "Resume"}
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm text-muted-foreground">Frequency</label>
+                    <select
+                      value={backupConfig.frequency}
+                      onChange={async (e) => {
+                        const freq = e.target.value as BackupFrequency
+                        await fetch("/api/backup/config", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ frequency: freq }),
+                        })
+                        setBackupConfig({ ...backupConfig, frequency: freq })
+                      }}
+                      className="h-8 rounded-md border bg-background px-2 text-sm"
+                    >
+                      <option value="hourly">Every hour</option>
+                      <option value="every_6h">Every 6 hours</option>
+                      <option value="every_12h">Every 12 hours</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                    </select>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={backupLoading}
+                    onClick={async () => {
+                      setBackupLoading(true)
+                      try {
+                        await fetch("/api/backup/run", { method: "POST" })
+                        const histRes = await fetch("/api/backup/history")
+                        if (histRes.ok) setBackupHistory(await histRes.json())
+                      } finally {
+                        setBackupLoading(false)
+                      }
+                    }}
+                  >
+                    {backupLoading ? (
+                      <LoaderIcon className="mr-2 size-3.5 animate-spin" />
+                    ) : (
+                      <PlayIcon className="mr-2 size-3.5" />
+                    )}
+                    Backup Now
+                  </Button>
+                  {backupHistory.length > 0 && (
+                    <div className="space-y-2 border-t pt-3">
+                      <p className="text-sm font-medium">Recent backups</p>
+                      <div className="space-y-1">
+                        {backupHistory.slice(0, 5).map((run) => (
+                          <div key={run.id} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              {run.status === "completed" ? (
+                                <CheckCircleIcon className="size-3.5 text-green-600" />
+                              ) : run.status === "failed" ? (
+                                <XCircleIcon className="size-3.5 text-destructive" />
+                              ) : (
+                                <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+                              )}
+                              <span className="text-muted-foreground">
+                                {new Date(run.startedAt).toLocaleDateString()}{" "}
+                                {new Date(run.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">{run.filesUploaded} files</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Peer Sync */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold">Peer Sync</h2>
+            <div className="space-y-4 rounded-lg border p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                  <ServerIcon className="size-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{syncPeer?.displayName || "This instance"}</p>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {syncPeer?.id ? `ID: ${syncPeer.id.slice(0, 12)}...` : "Loading..."}
+                  </p>
+                </div>
+              </div>
+
+              {syncPairings.length > 0 && (
+                <div className="space-y-2 border-t pt-3">
+                  <p className="text-sm font-medium">Paired instances</p>
+                  {syncPairings.map((pairing) => (
+                    <div key={pairing.id} className="flex items-center justify-between rounded-md border p-3">
+                      <div>
+                        <p className="text-sm font-medium">{pairing.remoteUrl}</p>
+                        <p className="text-xs text-muted-foreground">
+                          <span className={pairing.isActive ? "text-green-600" : "text-muted-foreground"}>
+                            {pairing.isActive ? "Active" : "Inactive"}
+                          </span>
+                          {pairing.lastSyncAt && (
+                            <> -- Last sync: {new Date(pairing.lastSyncAt).toLocaleString()}</>
+                          )}
+                          {" "}-- Mode: {pairing.syncMode}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          await fetch("/api/sync/settings", {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ revokePairingId: pairing.id }),
+                          })
+                          setSyncPairings(syncPairings.filter((p) => p.id !== pairing.id))
+                        }}
+                      >
+                        <UnlinkIcon className="mr-2 size-3.5" />
+                        Unpair
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-3 border-t pt-3">
+                <p className="text-sm font-medium">Pair with another instance</p>
+                <p className="text-sm text-muted-foreground">
+                  Enter the URL and credentials of the remote openvlt instance to sync with.
+                </p>
+                <div className="space-y-2">
+                  <input
+                    type="url"
+                    value={pairUrl}
+                    onChange={(e) => setPairUrl(e.target.value)}
+                    placeholder="https://other-instance.example.com:3456"
+                    className="h-9 w-full rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={pairUsername}
+                      onChange={(e) => setPairUsername(e.target.value)}
+                      placeholder="Username on remote"
+                      className="h-9 flex-1 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={pairPassword}
+                      onChange={(e) => setPairPassword(e.target.value)}
+                      placeholder="Password on remote"
+                      className="h-9 flex-1 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                    />
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={!pairUrl || !pairUsername || !pairPassword || pairingLoading}
+                  onClick={async () => {
+                    setPairingLoading(true)
+                    try {
+                      const loginRes = await fetch(`${pairUrl}/api/auth/login`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ username: pairUsername, password: pairPassword }),
+                        credentials: "include",
+                      })
+                      if (!loginRes.ok) {
+                        alert("Failed to authenticate with remote instance")
+                        return
+                      }
+                      const reqRes = await fetch(`${pairUrl}/api/sync/pair/request`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          peerName: syncPeer?.displayName || "Unknown",
+                          peerId: syncPeer?.id || "",
+                          vaultName: "Vault",
+                        }),
+                        credentials: "include",
+                      })
+                      if (!reqRes.ok) {
+                        alert("Pairing request failed")
+                        return
+                      }
+                      const { pairingId } = await reqRes.json()
+                      alert(`Pairing established! ID: ${pairingId.slice(0, 8)}...`)
+                      const settingsRes = await fetch("/api/sync/settings")
+                      if (settingsRes.ok) {
+                        const data = await settingsRes.json()
+                        setSyncPairings(data.pairings)
+                      }
+                      setPairUrl("")
+                      setPairUsername("")
+                      setPairPassword("")
+                    } catch (err) {
+                      alert(`Failed to pair: ${err instanceof Error ? err.message : "Unknown error"}`)
+                    } finally {
+                      setPairingLoading(false)
+                    }
+                  }}
+                >
+                  {pairingLoading ? (
+                    <LoaderIcon className="mr-2 size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCwIcon className="mr-2 size-3.5" />
+                  )}
+                  Start Pairing
+                </Button>
+              </div>
             </div>
           </section>
 

@@ -4,6 +4,7 @@ import { v4 as uuid } from "uuid"
 import { getDb } from "@/lib/db"
 import { getVaultPath, safeResolvePath } from "@/lib/vaults/service"
 import { recordStructureEvent } from "@/lib/versions/structure-events"
+import { appendSyncLog, hashContent } from "@/lib/sync/log"
 import type { NoteMetadata, NoteType, NoteWithContent, VersionTrigger } from "@/types"
 
 const TRASH_AUTO_PURGE_DAYS = 30
@@ -33,6 +34,8 @@ function toMetadata(row: Record<string, unknown>): NoteMetadata {
     tags: tagRows.map((t) => t.name),
     version: (row.version as number) ?? 1,
     noteType: (row.note_type as NoteType) ?? "markdown",
+    icon: (row.icon as string) || null,
+    coverImage: (row.cover_image as string) || null,
   }
 }
 
@@ -137,6 +140,12 @@ export function createNote(
     parentId,
   })
 
+  appendSyncLog(vaultId, "note", id, "create", {
+    title,
+    filePath,
+    parentId,
+  }, hashContent(fileContent))
+
   return metadata
 }
 
@@ -233,6 +242,10 @@ export function updateNoteContent(
          WHERE rowid = (SELECT rowid FROM notes WHERE id = ?)`
       ).run(row.title, mergeResult.content, id)
 
+      appendSyncLog(vaultId, "note", id, "update", {
+        title: row.title,
+      }, hashContent(mergeResult.content))
+
       return {
         version: newVersion,
         content: mergeResult.content,
@@ -251,15 +264,19 @@ export function updateNoteContent(
   }
 
   // Normal save (no conflict)
-  const { saveVersionGrouped } =
-    require("@/lib/versions/grouping") as typeof import("@/lib/versions/grouping")
   let currentContent = ""
   try {
     currentContent = fs.readFileSync(fullPath, "utf-8")
   } catch {}
-  if (currentContent !== content) {
-    saveVersionGrouped(id, currentContent, row.title, userId, trigger)
+
+  // Skip save entirely if content hasn't changed
+  if (currentContent === content) {
+    return { version: currentVersion, content, status: "saved" }
   }
+
+  const { saveVersionGrouped } =
+    require("@/lib/versions/grouping") as typeof import("@/lib/versions/grouping")
+  saveVersionGrouped(id, currentContent, row.title, userId, trigger)
 
   fs.writeFileSync(fullPath, content, "utf-8")
   const newVersion = currentVersion + 1
@@ -275,6 +292,10 @@ export function updateNoteContent(
     `UPDATE notes_fts SET title = ?, content = ?
      WHERE rowid = (SELECT rowid FROM notes WHERE id = ?)`
   ).run(row.title, content, id)
+
+  appendSyncLog(vaultId, "note", id, "update", {
+    title: row.title,
+  }, hashContent(content))
 
   return { version: newVersion, content, status: "saved" }
 }
@@ -322,13 +343,52 @@ export function updateNoteTitle(
     "UPDATE notes SET title = ?, file_path = ?, updated_at = ? WHERE id = ? AND user_id = ? AND vault_id = ?"
   ).run(title, newFilePath, now, id, userId, vaultId)
 
-  recordStructureEvent(vaultId, userId, "note_renamed", "note", id, {
-    title: oldTitle,
-    filePath: row.file_path,
-  }, {
-    title,
-    filePath: newFilePath,
+  recordStructureEvent(
+    vaultId,
+    userId,
+    "note_renamed",
+    "note",
+    id,
+    {
+      title: oldTitle,
+      filePath: row.file_path,
+    },
+    {
+      title,
+      filePath: newFilePath,
+    }
+  )
+
+  appendSyncLog(vaultId, "note", id, "rename", {
+    oldTitle,
+    newTitle: title,
+    oldFilePath: row.file_path,
+    newFilePath,
   })
+}
+
+export function updateNoteIcon(
+  id: string,
+  icon: string | null,
+  userId: string,
+  vaultId: string
+): void {
+  const db = getDb()
+  db.prepare(
+    "UPDATE notes SET icon = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ? AND vault_id = ?"
+  ).run(icon, id, userId, vaultId)
+}
+
+export function updateNoteCover(
+  id: string,
+  coverImage: string | null,
+  userId: string,
+  vaultId: string
+): void {
+  const db = getDb()
+  db.prepare(
+    "UPDATE notes SET cover_image = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ? AND vault_id = ?"
+  ).run(coverImage, id, userId, vaultId)
 }
 
 export function deleteNote(
@@ -368,24 +428,51 @@ export function deleteNote(
       "DELETE FROM notes WHERE id = ? AND user_id = ? AND vault_id = ?"
     ).run(id, userId, vaultId)
 
-    recordStructureEvent(vaultId, userId, "note_deleted", "note", id, {
+    recordStructureEvent(
+      vaultId,
+      userId,
+      "note_deleted",
+      "note",
+      id,
+      {
+        title: noteInfo.title,
+        filePath: row.file_path,
+        parentId: noteInfo.parent_id,
+      },
+      null
+    )
+
+    appendSyncLog(vaultId, "note", id, "delete", {
       title: noteInfo.title,
       filePath: row.file_path,
       parentId: noteInfo.parent_id,
-    }, null)
+    })
   } else {
     const now = new Date().toISOString()
     db.prepare(
       "UPDATE notes SET is_trashed = 1, trashed_at = ? WHERE id = ? AND user_id = ? AND vault_id = ?"
     ).run(now, id, userId, vaultId)
 
-    recordStructureEvent(vaultId, userId, "note_trashed", "note", id, {
+    recordStructureEvent(
+      vaultId,
+      userId,
+      "note_trashed",
+      "note",
+      id,
+      {
+        title: noteInfo.title,
+        filePath: row.file_path,
+        parentId: noteInfo.parent_id,
+        isTrashed: false,
+      },
+      {
+        isTrashed: true,
+      }
+    )
+
+    appendSyncLog(vaultId, "note", id, "trash", {
       title: noteInfo.title,
       filePath: row.file_path,
-      parentId: noteInfo.parent_id,
-      isTrashed: false,
-    }, {
-      isTrashed: true,
     })
   }
 }
@@ -396,11 +483,21 @@ export function restoreNote(id: string, userId: string, vaultId: string): void {
     "UPDATE notes SET is_trashed = 0, trashed_at = NULL WHERE id = ? AND user_id = ? AND vault_id = ?"
   ).run(id, userId, vaultId)
 
-  recordStructureEvent(vaultId, userId, "note_restored", "note", id, {
-    isTrashed: true,
-  }, {
-    isTrashed: false,
-  })
+  recordStructureEvent(
+    vaultId,
+    userId,
+    "note_restored",
+    "note",
+    id,
+    {
+      isTrashed: true,
+    },
+    {
+      isTrashed: false,
+    }
+  )
+
+  appendSyncLog(vaultId, "note", id, "restore", null)
 }
 
 export function toggleFavorite(
@@ -421,6 +518,11 @@ export function toggleFavorite(
   db.prepare(
     "UPDATE notes SET is_favorite = ? WHERE id = ? AND user_id = ? AND vault_id = ?"
   ).run(newValue, id, userId, vaultId)
+
+  appendSyncLog(vaultId, "note", id, "favorite", {
+    isFavorite: newValue === 1,
+  })
+
   return newValue === 1
 }
 
@@ -492,12 +594,27 @@ export function moveNote(
     "UPDATE notes SET parent_id = ?, file_path = ?, updated_at = ? WHERE id = ?"
   ).run(newParentId, newFilePath, now, id)
 
-  recordStructureEvent(vaultId, userId, "note_moved", "note", id, {
-    parentId: oldParentId,
-    filePath: oldFilePath,
-  }, {
-    parentId: newParentId,
-    filePath: newFilePath,
+  recordStructureEvent(
+    vaultId,
+    userId,
+    "note_moved",
+    "note",
+    id,
+    {
+      parentId: oldParentId,
+      filePath: oldFilePath,
+    },
+    {
+      parentId: newParentId,
+      filePath: newFilePath,
+    }
+  )
+
+  appendSyncLog(vaultId, "note", id, "move", {
+    oldParentId,
+    newParentId,
+    oldFilePath,
+    newFilePath,
   })
 
   return toMetadata(
@@ -663,6 +780,38 @@ export function getBacklinks(
   }
 
   return results
+}
+
+export function searchNotesByTitle(
+  query: string,
+  userId: string,
+  vaultId: string
+): { id: string; title: string }[] {
+  const db = getDb()
+  const rows = db
+    .prepare(
+      `SELECT id, title FROM notes
+       WHERE title LIKE ? AND is_trashed = 0 AND user_id = ? AND vault_id = ?
+       ORDER BY title
+       LIMIT 15`
+    )
+    .all(`%${query}%`, userId, vaultId) as { id: string; title: string }[]
+  return rows
+}
+
+export function resolveNoteByTitle(
+  title: string,
+  userId: string,
+  vaultId: string
+): { id: string; title: string } | null {
+  const db = getDb()
+  const row = db
+    .prepare(
+      `SELECT id, title FROM notes
+       WHERE title = ? COLLATE NOCASE AND is_trashed = 0 AND user_id = ? AND vault_id = ?`
+    )
+    .get(title, userId, vaultId) as { id: string; title: string } | undefined
+  return row ?? null
 }
 
 /**

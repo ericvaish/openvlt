@@ -81,76 +81,56 @@ export const Callout = Node.create<CalloutOptions>({
     ]
   },
 
-  addStorage() {
-    return {
-      markdown: {
-        serialize(
-          state: {
-            write: (s: string) => void
-            ensureNewLine: () => void
-            wrapBlock: (
-              delim: string,
-              first: string | null,
-              node: unknown,
-              fn: () => void
-            ) => void
-            renderContent: (node: { content: unknown }) => void
-            closeBlock: (node: unknown) => void
-          },
-          node: {
-            attrs: { type: string }
-            content: unknown
-          }
-        ) {
-          const type = node.attrs.type || "note"
-          state.wrapBlock("> ", `> [!${type.toUpperCase()}]\n> `, node, () =>
-            state.renderContent(node)
-          )
-          state.closeBlock(node)
-        },
-        parse: {
-          updateDOM(element: HTMLElement) {
-            // Find blockquotes whose first text starts with [!TYPE]
-            element.querySelectorAll("blockquote").forEach((bq) => {
-              const firstP = bq.querySelector("p")
-              if (!firstP) return
+  renderMarkdown: (node: any, helpers: any) => {
+    const type = (node.attrs?.type || "note").toUpperCase()
+    const inner = node.content ? helpers.renderChildren(node.content, "\n") : ""
+    const lines = inner.split("\n")
+    const quoted = lines.map((l: string) => `> ${l}`).join("\n")
+    return `> [!${type}]\n${quoted}\n`
+  },
 
-              const textContent = firstP.textContent || ""
-              const match = textContent.match(CALLOUT_REGEX)
-              if (!match) return
+  markdownTokenizer: {
+    name: "callout",
+    level: "block" as const,
+    start(src: string) {
+      const match = src.match(/^>\s*\[!\w+\]/m)
+      return match ? (match.index ?? -1) : -1
+    },
+    tokenize(src: string, _tokens: any, lexer: any) {
+      // Match a blockquote that starts with > [!TYPE]
+      const lines = src.split("\n")
+      const firstLine = lines[0]
+      const typeMatch = firstLine.match(/^>\s*\[!(\w+)\]\s*$/)
+      if (!typeMatch) return undefined
 
-              const calloutType = match[1].toLowerCase()
-              // Validate it's a known callout type
-              if (
-                !CALLOUT_TYPES.includes(calloutType) &&
-                !calloutType.match(/^\w+$/)
-              )
-                return
+      const calloutType = typeMatch[1].toLowerCase()
 
-              // Remove the [!TYPE] prefix from the first paragraph
-              const firstText = firstP.firstChild
-              if (firstText && firstText.nodeType === 3) {
-                // Text node
-                firstText.textContent =
-                  firstText.textContent?.replace(CALLOUT_REGEX, "") || ""
-                // If paragraph is now empty, remove it
-                if (!firstP.textContent?.trim() && !firstP.querySelector("*")) {
-                  firstP.remove()
-                }
-              }
+      // Collect all subsequent ">" lines
+      let i = 1
+      while (i < lines.length && /^>/.test(lines[i])) {
+        i++
+      }
 
-              // Replace blockquote with callout div
-              const calloutDiv = element.ownerDocument.createElement("div")
-              calloutDiv.setAttribute("data-callout", "")
-              calloutDiv.setAttribute("data-callout-type", calloutType)
-              calloutDiv.className = `callout callout-${calloutType}`
-              calloutDiv.innerHTML = bq.innerHTML
-              bq.replaceWith(calloutDiv)
-            })
-          },
-        },
-      },
-    }
+      const raw = lines.slice(0, i).join("\n")
+      // Strip the leading "> " from content lines (skip the first [!TYPE] line)
+      const contentLines = lines.slice(1, i).map((l: string) => l.replace(/^>\s?/, ""))
+      const innerContent = contentLines.join("\n").trim()
+
+      return {
+        type: "callout",
+        raw: raw + (i < lines.length ? "" : ""),
+        calloutType,
+        tokens: lexer.blockTokens(innerContent),
+      }
+    },
+  },
+
+  parseMarkdown: (token: any, helpers: any) => {
+    return helpers.createNode(
+      "callout",
+      { type: token.calloutType || "note" },
+      helpers.parseChildren(token.tokens || [])
+    )
   },
 
   addCommands() {

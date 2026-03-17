@@ -180,6 +180,18 @@ export function deleteVault(vaultId: string, userId: string): void {
   }
 }
 
+export function renameVault(
+  vaultId: string,
+  userId: string,
+  name: string
+): void {
+  const db = getDb()
+  const result = db
+    .prepare("UPDATE vaults SET name = ? WHERE id = ? AND user_id = ?")
+    .run(name, vaultId, userId)
+  if (result.changes === 0) throw new Error("Vault not found")
+}
+
 export function setActiveVault(userId: string, vaultId: string): void {
   const db = getDb()
 
@@ -241,7 +253,10 @@ export function getVaultPath(vaultId: string): string {
  * Resolve a relative file path within a vault root, preventing path traversal.
  * Throws if the resolved path escapes the vault directory.
  */
-export function safeResolvePath(vaultRoot: string, relativePath: string): string {
+export function safeResolvePath(
+  vaultRoot: string,
+  relativePath: string
+): string {
   const resolved = path.resolve(vaultRoot, relativePath)
   if (!resolved.startsWith(vaultRoot + path.sep) && resolved !== vaultRoot) {
     throw new Error("Path traversal detected")

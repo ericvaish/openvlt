@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import type { Editor } from "@tiptap/core"
-import { ExternalLink, Pencil, Unlink } from "lucide-react"
+import { ExternalLink, Pencil, Unlink, FileTextIcon } from "lucide-react"
 
 interface LinkHoverTooltipProps {
   editor: Editor | null
@@ -16,6 +16,7 @@ export function LinkHoverTooltip({
   const [link, setLink] = React.useState<{
     href: string
     rect: DOMRect
+    isWikiLink?: boolean
   } | null>(null)
   const hideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -23,7 +24,8 @@ export function LinkHoverTooltip({
   const tooltipRef = React.useRef<HTMLDivElement>(null)
 
   const isMac =
-    typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad/.test(navigator.platform)
   const modKey = isMac ? "\u2318" : "Ctrl"
 
   function cancelHide() {
@@ -47,6 +49,21 @@ export function LinkHoverTooltip({
 
     function handleMouseOver(e: MouseEvent) {
       const target = e.target as HTMLElement
+
+      // Check for wiki-link
+      const wikiLink = target.closest(
+        "span[data-wiki-link]"
+      ) as HTMLElement | null
+      if (wikiLink) {
+        cancelHide()
+        const title = wikiLink.getAttribute("data-wiki-link")
+        if (!title) return
+        const rect = wikiLink.getBoundingClientRect()
+        setLink({ href: title, rect, isWikiLink: true })
+        return
+      }
+
+      // Check for regular link
       const anchor = target.closest("a[href]") as HTMLAnchorElement | null
       if (!anchor) return
 
@@ -60,10 +77,9 @@ export function LinkHoverTooltip({
 
     function handleMouseOut(e: MouseEvent) {
       const target = e.relatedTarget as HTMLElement | null
-      // Don't hide if moving into the tooltip itself
       if (target && tooltipRef.current?.contains(target)) return
-      const anchor = (e.target as HTMLElement).closest("a[href]")
-      if (anchor) {
+      const el = e.target as HTMLElement
+      if (el.closest("a[href]") || el.closest("span[data-wiki-link]")) {
         scheduleHide()
       }
     }
@@ -117,7 +133,12 @@ export function LinkHoverTooltip({
     if (url === "") {
       editor.chain().focus().unsetLink().run()
     } else {
-      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
+      editor
+        .chain()
+        .focus()
+        .extendMarkRange("link")
+        .setLink({ href: url })
+        .run()
     }
     setLink(null)
   }
@@ -133,43 +154,55 @@ export function LinkHoverTooltip({
       ref={tooltipRef}
       onMouseEnter={cancelHide}
       onMouseLeave={() => scheduleHide()}
-      className="absolute z-50 flex items-center gap-1.5 rounded-lg border border-border bg-popover px-3 py-2 shadow-lg animate-in fade-in-0 zoom-in-95 duration-100"
+      className="absolute z-50 flex animate-in items-center gap-1.5 rounded-lg border border-border bg-popover px-3 py-2 shadow-lg duration-100 fade-in-0 zoom-in-95"
       style={{
         top,
         left,
         maxWidth: "min(400px, calc(100% - 32px))",
       }}
     >
-      <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
-      <a
-        href={link.href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="truncate text-sm text-primary underline underline-offset-2 hover:text-primary/80"
-        title={link.href}
-      >
-        {truncateUrl(link.href)}
-      </a>
-      <span className="shrink-0 text-xs text-muted-foreground">
-        {modKey}+Click
-      </span>
-      <div className="mx-0.5 h-4 w-px bg-border" />
-      <button
-        type="button"
-        onClick={handleEdit}
-        className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-        title="Edit link"
-      >
-        <Pencil className="size-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={handleUnlink}
-        className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-        title="Remove link"
-      >
-        <Unlink className="size-3.5" />
-      </button>
+      {link.isWikiLink ? (
+        <>
+          <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate text-sm text-primary">{link.href}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {modKey}+Click to open
+          </span>
+        </>
+      ) : (
+        <>
+          <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
+          <a
+            href={link.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="truncate text-sm text-primary underline underline-offset-2 hover:text-primary/80"
+            title={link.href}
+          >
+            {truncateUrl(link.href)}
+          </a>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {modKey}+Click
+          </span>
+          <div className="mx-0.5 h-4 w-px bg-border" />
+          <button
+            type="button"
+            onClick={handleEdit}
+            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Edit link"
+          >
+            <Pencil className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleUnlink}
+            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Remove link"
+          >
+            <Unlink className="size-3.5" />
+          </button>
+        </>
+      )}
     </div>
   )
 }

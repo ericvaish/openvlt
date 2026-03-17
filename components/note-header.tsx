@@ -9,8 +9,11 @@ import {
   PanelRightIcon,
   XIcon,
   BookmarkPlusIcon,
+  BookmarkCheckIcon,
   HistoryIcon,
   MoreHorizontalIcon,
+  ImageIcon,
+  SmileIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -22,6 +25,8 @@ import {
 import { useTabStore } from "@/lib/stores/tab-store"
 import { LockDialog } from "@/components/lock-dialog"
 import { addBookmark } from "@/components/bookmarks-panel"
+import { IconPicker } from "@/components/icon-picker"
+import { toast } from "sonner"
 import type { NoteMetadata } from "@/types/note"
 
 interface NoteHeaderProps {
@@ -36,7 +41,25 @@ export function NoteHeader({ note, isSplit = false, toolbarSlot }: NoteHeaderPro
   const [title, setTitle] = React.useState(note.title)
   const [isFavorite, setIsFavorite] = React.useState(note.isFavorite)
   const [isLocked, setIsLocked] = React.useState(note.isLocked)
+  const [isBookmarked, setIsBookmarked] = React.useState(false)
   const [lockDialogOpen, setLockDialogOpen] = React.useState(false)
+  const [icon, setIcon] = React.useState<string | null>(note.icon)
+  const [coverImage, setCoverImage] = React.useState<string | null>(
+    note.coverImage
+  )
+  const [coverHovered, setCoverHovered] = React.useState(false)
+  const coverInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    fetch("/api/bookmarks")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((bookmarks: { type: string; targetId: string | null }[]) => {
+        setIsBookmarked(
+          bookmarks.some((b) => b.type === "note" && b.targetId === note.id)
+        )
+      })
+      .catch(() => {})
+  }, [note.id])
   const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
@@ -60,6 +83,51 @@ export function NoteHeader({ note, isSplit = false, toolbarSlot }: NoteHeaderPro
     }, 800)
   }
 
+  async function handleIconChange(newIcon: string | null) {
+    setIcon(newIcon)
+    await fetch(`/api/notes/${note.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ icon: newIcon }),
+    })
+  }
+
+  async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    const res = await fetch(`/api/attachments?noteId=${note.id}`, {
+      method: "POST",
+      body: formData,
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const url = `/api/attachments/${data.id}`
+      setCoverImage(url)
+      await fetch(`/api/notes/${note.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coverImage: url }),
+      })
+      toast.success("Cover image added")
+      window.dispatchEvent(new Event("openvlt:notes-refresh"))
+    }
+  }
+
+  async function handleRemoveCover() {
+    setCoverImage(null)
+    await fetch(`/api/notes/${note.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coverImage: null }),
+    })
+    toast.success("Cover image removed")
+    window.dispatchEvent(new Event("openvlt:notes-refresh"))
+  }
+
   async function handleToggleFavorite() {
     const res = await fetch(`/api/notes/${note.id}`, {
       method: "PUT",
@@ -69,6 +137,7 @@ export function NoteHeader({ note, isSplit = false, toolbarSlot }: NoteHeaderPro
     if (res.ok) {
       const data = await res.json()
       setIsFavorite(data.isFavorite)
+      window.dispatchEvent(new Event("openvlt:favorites-refresh"))
     }
   }
 
@@ -83,7 +152,48 @@ export function NoteHeader({ note, isSplit = false, toolbarSlot }: NoteHeaderPro
 
   return (
     <>
+      {/* Cover image */}
+      {coverImage && (
+        <div
+          className="group/cover relative h-40 shrink-0 overflow-hidden bg-muted"
+          onMouseEnter={() => setCoverHovered(true)}
+          onMouseLeave={() => setCoverHovered(false)}
+        >
+          <img src={coverImage} alt="" className="h-full w-full object-cover" />
+          {coverHovered && (
+            <div className="absolute right-3 bottom-3 flex gap-1.5">
+              <button
+                onClick={() => coverInputRef.current?.click()}
+                className="rounded-md bg-background/80 px-2.5 py-1 text-xs font-medium text-foreground backdrop-blur-sm hover:bg-background/90"
+              >
+                Change cover
+              </button>
+              <button
+                onClick={handleRemoveCover}
+                className="rounded-md bg-background/80 px-2.5 py-1 text-xs font-medium text-foreground backdrop-blur-sm hover:bg-background/90"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <header className="flex h-10 shrink-0 items-center gap-2 border-b px-4">
+        {/* Page icon */}
+        <IconPicker value={icon} onChange={handleIconChange}>
+          <button
+            className="flex shrink-0 items-center justify-center rounded-md hover:bg-accent"
+            title={icon ? "Change icon" : "Add icon"}
+          >
+            {icon ? (
+              <span className="text-lg leading-none">{icon}</span>
+            ) : (
+              <SmileIcon className="size-4 text-muted-foreground" />
+            )}
+          </button>
+        </IconPicker>
+
         <input
           type="text"
           value={title}
@@ -96,61 +206,98 @@ export function NoteHeader({ note, isSplit = false, toolbarSlot }: NoteHeaderPro
 
         <span className="text-sm text-muted-foreground">{timeAgo}</span>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" title="More options">
-              <MoreHorizontalIcon className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem
-              onClick={() => {
-                if (splitNoteId === note.id) {
-                  closeSplit()
-                } else {
-                  openSplit(note.id, title)
-                }
-              }}
-            >
-              <PanelRightIcon className="mr-2 size-4" />
-              {splitNoteId === note.id ? "Close split" : "Split view"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setLockDialogOpen(true)}>
-              {isLocked ? (
-                <LockIcon className="mr-2 size-4 text-yellow-500" />
-              ) : (
-                <UnlockIcon className="mr-2 size-4" />
-              )}
-              {isLocked ? "Unlock note" : "Lock note"}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                window.dispatchEvent(
-                  new CustomEvent("openvlt:toggle-history", {
-                    detail: { noteId: note.id, folderId: note.parentId },
-                  })
-                )
-              }
-            >
-              <HistoryIcon className="mr-2 size-4" />
-              Version history
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => addBookmark("note", title, note.id)}>
-              <BookmarkPlusIcon className="mr-2 size-4" />
-              Add to bookmarks
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleToggleFavorite}>
-              <StarIcon
-                className={`mr-2 size-4 ${isFavorite ? "fill-yellow-400 text-yellow-400" : ""}`}
-              />
-              {isFavorite ? "Remove favorite" : "Add to favorites"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleDelete} className="text-destructive">
-              <TrashIcon className="mr-2 size-4" />
-              Move to trash
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Add cover button (only when no cover) */}
+        {!coverImage && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => coverInputRef.current?.click()}
+            title="Add cover image"
+          >
+            <ImageIcon className="size-4" />
+          </Button>
+        )}
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => {
+            if (splitNoteId === note.id) {
+              closeSplit()
+            } else {
+              openSplit(note.id, title)
+            }
+          }}
+          title={splitNoteId === note.id ? "Close split" : "Open in split view"}
+        >
+          <PanelRightIcon
+            className={`size-4 ${splitNoteId === note.id ? "text-primary" : ""}`}
+          />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setLockDialogOpen(true)}
+          title={isLocked ? "Unlock note" : "Lock note"}
+        >
+          {isLocked ? (
+            <LockIcon className="size-4 text-yellow-500" />
+          ) : (
+            <UnlockIcon className="size-4" />
+          )}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent("openvlt:toggle-history", {
+                detail: { noteId: note.id, folderId: note.parentId },
+              })
+            )
+          }
+          title="Version history (Cmd+Shift+H)"
+        >
+          <HistoryIcon className="size-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={async () => {
+            await addBookmark("note", title, note.id)
+            setIsBookmarked((prev) => !prev)
+          }}
+          title={isBookmarked ? "Remove bookmark" : "Add to bookmarks"}
+        >
+          {isBookmarked ? (
+            <BookmarkCheckIcon className="size-4 fill-primary text-primary" />
+          ) : (
+            <BookmarkPlusIcon className="size-4" />
+          )}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleToggleFavorite}
+          title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+        >
+          <StarIcon
+            className={`size-4 ${isFavorite ? "fill-yellow-400 text-yellow-400" : ""}`}
+          />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleDelete}
+          title="Move to trash"
+        >
+          <TrashIcon className="size-4" />
+        </Button>
 
         {isSplit && (
           <Button
@@ -164,6 +311,15 @@ export function NoteHeader({ note, isSplit = false, toolbarSlot }: NoteHeaderPro
         )}
       </header>
 
+      {/* Hidden file input for cover image upload */}
+      <input
+        ref={coverInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleCoverUpload}
+        className="hidden"
+      />
+
       <LockDialog
         open={lockDialogOpen}
         onClose={() => setLockDialogOpen(false)}
@@ -171,7 +327,6 @@ export function NoteHeader({ note, isSplit = false, toolbarSlot }: NoteHeaderPro
         isLocked={isLocked}
         onLockChange={(locked) => {
           setIsLocked(locked)
-          // Reload the tab to show locked/unlocked state
           window.location.reload()
         }}
       />

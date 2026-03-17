@@ -21,6 +21,7 @@ interface TabStore extends TabState {
   closeTab: (noteId: string) => void
   setActiveTab: (noteId: string) => void
   updateTabTitle: (noteId: string, title: string) => void
+  reorderTab: (fromIndex: number, toIndex: number) => void
   openSplit: (noteId: string, title: string) => void
   closeSplit: () => void
 }
@@ -139,6 +140,26 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
     []
   )
 
+  const reorderTab = React.useCallback(
+    (fromIndex: number, toIndex: number) => {
+      setState((prev) => {
+        if (
+          fromIndex === toIndex ||
+          fromIndex < 0 ||
+          toIndex < 0 ||
+          fromIndex >= prev.tabs.length ||
+          toIndex >= prev.tabs.length
+        )
+          return prev
+        const tabs = [...prev.tabs]
+        const [moved] = tabs.splice(fromIndex, 1)
+        tabs.splice(toIndex, 0, moved)
+        return { ...prev, tabs }
+      })
+    },
+    []
+  )
+
   const openSplit = React.useCallback((noteId: string, title: string) => {
     setState((prev) => ({ ...prev, splitNoteId: noteId, splitTitle: title }))
   }, [])
@@ -154,10 +175,11 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
       closeTab,
       setActiveTab,
       updateTabTitle,
+      reorderTab,
       openSplit,
       closeSplit,
     }),
-    [state, openTab, closeTab, setActiveTab, updateTabTitle, openSplit, closeSplit]
+    [state, openTab, closeTab, setActiveTab, updateTabTitle, reorderTab, openSplit, closeSplit]
   )
 
   return <TabContext.Provider value={store}>{children}</TabContext.Provider>

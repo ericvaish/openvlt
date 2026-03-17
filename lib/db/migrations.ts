@@ -299,6 +299,185 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 8,
+    description:
+      "Add sync log, cloud backup, and peer sync tables",
+    up: (db) => {
+      // Sync log: shared change log for cloud backup and peer sync
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_log (
+          seq INTEGER PRIMARY KEY AUTOINCREMENT,
+          vault_id TEXT NOT NULL,
+          entity_type TEXT NOT NULL CHECK(entity_type IN ('note', 'folder', 'attachment', 'metadata')),
+          entity_id TEXT NOT NULL,
+          change_type TEXT NOT NULL CHECK(change_type IN ('create', 'update', 'delete', 'move', 'rename', 'trash', 'restore', 'favorite')),
+          payload TEXT,
+          content_hash TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          peer_origin TEXT,
+          FOREIGN KEY (vault_id) REFERENCES vaults(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_sync_log_vault_seq ON sync_log(vault_id, seq);
+        CREATE INDEX IF NOT EXISTS idx_sync_log_entity ON sync_log(entity_id, vault_id);
+      `)
+
+      // Cloud provider OAuth credentials
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS cloud_providers (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          provider TEXT NOT NULL CHECK(provider IN ('google_drive', 'dropbox', 's3', 'webdav')),
+          display_name TEXT,
+          access_token_enc TEXT,
+          refresh_token_enc TEXT,
+          token_expires_at TEXT,
+          provider_metadata TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(user_id, provider)
+        );
+      `)
+
+      // Backup configuration per vault
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS backup_configs (
+          id TEXT PRIMARY KEY,
+          vault_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          provider_id TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          frequency TEXT NOT NULL DEFAULT 'daily' CHECK(frequency IN ('hourly', 'every_6h', 'every_12h', 'daily', 'weekly')),
+          max_versions INTEGER NOT NULL DEFAULT 10,
+          backup_key_enc TEXT NOT NULL,
+          backup_key_salt TEXT NOT NULL,
+          backup_key_server_enc TEXT,
+          remote_folder_id TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (vault_id) REFERENCES vaults(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (provider_id) REFERENCES cloud_providers(id) ON DELETE CASCADE,
+          UNIQUE(vault_id, provider_id)
+        );
+      `)
+
+      // Backup run history
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS backup_runs (
+          id TEXT PRIMARY KEY,
+          config_id TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed', 'partial')),
+          started_at TEXT NOT NULL,
+          completed_at TEXT,
+          files_uploaded INTEGER NOT NULL DEFAULT 0,
+          files_deleted INTEGER NOT NULL DEFAULT 0,
+          bytes_uploaded INTEGER NOT NULL DEFAULT 0,
+          error_message TEXT,
+          last_sync_log_seq INTEGER,
+          FOREIGN KEY (config_id) REFERENCES backup_configs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_backup_runs_config ON backup_runs(config_id, started_at);
+      `)
+
+      // Backup file index for incremental backups
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS backup_file_index (
+          id TEXT PRIMARY KEY,
+          config_id TEXT NOT NULL,
+          note_id TEXT,
+          entity_type TEXT NOT NULL CHECK(entity_type IN ('note', 'attachment', 'manifest')),
+          local_path TEXT NOT NULL,
+          remote_file_id TEXT,
+          content_hash TEXT NOT NULL,
+          encrypted_size INTEGER,
+          last_backed_up_at TEXT NOT NULL,
+          FOREIGN KEY (config_id) REFERENCES backup_configs(id) ON DELETE CASCADE,
+          UNIQUE(config_id, local_path)
+        );
+        CREATE INDEX IF NOT EXISTS idx_backup_file_index_note ON backup_file_index(config_id, note_id);
+      `)
+
+      // Peer sync: this instance's identity (singleton)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_peers (
+          id TEXT PRIMARY KEY,
+          display_name TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `)
+
+      // Peer sync: vault pairings with remote instances
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_pairings (
+          id TEXT PRIMARY KEY,
+          local_vault_id TEXT NOT NULL,
+          remote_peer_id TEXT NOT NULL,
+          remote_url TEXT NOT NULL,
+          shared_secret TEXT NOT NULL,
+          sync_mode TEXT NOT NULL DEFAULT 'all' CHECK(sync_mode IN ('all', 'selected')),
+          is_active INTEGER NOT NULL DEFAULT 1,
+          last_sync_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (local_vault_id) REFERENCES vaults(id) ON DELETE CASCADE
+        );
+      `)
+
+      // Peer sync: cursor tracking per pairing
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_cursors (
+          id TEXT PRIMARY KEY,
+          pairing_id TEXT NOT NULL,
+          remote_peer_id TEXT NOT NULL,
+          last_received_seq INTEGER NOT NULL DEFAULT 0,
+          last_sent_seq INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (pairing_id) REFERENCES sync_pairings(id) ON DELETE CASCADE
+        );
+      `)
+
+      // Peer sync: UUID mapping between instances
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_id_map (
+          pairing_id TEXT NOT NULL,
+          local_id TEXT NOT NULL,
+          remote_id TEXT NOT NULL,
+          entity_type TEXT NOT NULL CHECK(entity_type IN ('note', 'folder', 'attachment', 'metadata')),
+          PRIMARY KEY (pairing_id, local_id),
+          FOREIGN KEY (pairing_id) REFERENCES sync_pairings(id) ON DELETE CASCADE
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_id_map_remote ON sync_id_map(pairing_id, remote_id);
+      `)
+
+      // Peer sync: selective sync choices
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_selections (
+          id TEXT PRIMARY KEY,
+          pairing_id TEXT NOT NULL,
+          entity_type TEXT NOT NULL CHECK(entity_type IN ('folder', 'note')),
+          entity_id TEXT NOT NULL,
+          FOREIGN KEY (pairing_id) REFERENCES sync_pairings(id) ON DELETE CASCADE
+        );
+      `)
+    },
+  },
+  {
+    version: 9,
+    description: "Add page icon and cover image to notes",
+    up: (db) => {
+      const hasColumn = (table: string, column: string) => {
+        const cols = db.pragma(`table_info(${table})`) as { name: string }[]
+        return cols.some((c) => c.name === column)
+      }
+      if (!hasColumn("notes", "icon")) {
+        db.exec("ALTER TABLE notes ADD COLUMN icon TEXT")
+      }
+      if (!hasColumn("notes", "cover_image")) {
+        db.exec("ALTER TABLE notes ADD COLUMN cover_image TEXT")
+      }
+    },
+  },
 ]
 
 export function runMigrations(db: Database.Database) {

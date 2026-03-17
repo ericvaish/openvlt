@@ -74,6 +74,45 @@ export function createBookmark(
   }
 }
 
+export function findExistingBookmark(
+  userId: string,
+  vaultId: string,
+  type: Bookmark["type"],
+  targetId?: string | null,
+  data?: string | null
+): Bookmark | null {
+  const db = getDb()
+  let row: Record<string, unknown> | undefined
+
+  if (type === "note" && targetId) {
+    row = db
+      .prepare(
+        "SELECT * FROM bookmarks WHERE user_id = ? AND vault_id = ? AND type = ? AND target_id = ?"
+      )
+      .get(userId, vaultId, type, targetId) as
+      | Record<string, unknown>
+      | undefined
+  } else if (type === "heading" && targetId && data) {
+    row = db
+      .prepare(
+        "SELECT * FROM bookmarks WHERE user_id = ? AND vault_id = ? AND type = ? AND target_id = ? AND data = ?"
+      )
+      .get(userId, vaultId, type, targetId, data) as
+      | Record<string, unknown>
+      | undefined
+  } else if (type === "search" && data) {
+    row = db
+      .prepare(
+        "SELECT * FROM bookmarks WHERE user_id = ? AND vault_id = ? AND type = ? AND data = ?"
+      )
+      .get(userId, vaultId, type, data) as
+      | Record<string, unknown>
+      | undefined
+  }
+
+  return row ? toBookmark(row) : null
+}
+
 export function deleteBookmark(
   id: string,
   userId: string,

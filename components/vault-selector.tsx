@@ -6,6 +6,7 @@ import {
   ChevronsUpDownIcon,
   CheckIcon,
   PlusIcon,
+  SettingsIcon,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -21,6 +22,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { CreateVaultDialog } from "@/components/create-vault-dialog"
+import { ManageVaultsDialog } from "@/components/manage-vaults-dialog"
 import type { Vault } from "@/types"
 
 interface VaultSelectorProps {
@@ -31,6 +33,7 @@ export function VaultSelector({ onVaultChange }: VaultSelectorProps) {
   const router = useRouter()
   const [vaults, setVaults] = React.useState<Vault[]>([])
   const [createOpen, setCreateOpen] = React.useState(false)
+  const [manageOpen, setManageOpen] = React.useState(false)
 
   const activeVault = vaults.find((v) => v.isActive)
 
@@ -79,7 +82,13 @@ export function VaultSelector({ onVaultChange }: VaultSelectorProps) {
         <SidebarMenuItem>
           <SidebarMenuButton size="lg" className="cursor-default gap-3">
             <div className="flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg">
-              <Image src="/logo.svg" alt="openvlt" width={32} height={32} className="size-8" />
+              <Image
+                src="/logo.svg"
+                alt="openvlt"
+                width={32}
+                height={32}
+                className="size-8"
+              />
             </div>
             <div className="flex flex-col gap-0.5 leading-none">
               <span className="font-semibold">openvlt</span>
@@ -101,7 +110,13 @@ export function VaultSelector({ onVaultChange }: VaultSelectorProps) {
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton size="lg" className="cursor-pointer gap-3">
                 <div className="flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg">
-                  <Image src="/logo.svg" alt="openvlt" width={32} height={32} className="size-8" />
+                  <Image
+                    src="/logo.svg"
+                    alt="openvlt"
+                    width={32}
+                    height={32}
+                    className="size-8"
+                  />
                 </div>
                 <div className="flex flex-1 flex-col gap-0.5 leading-none">
                   <span className="font-semibold">
@@ -116,17 +131,23 @@ export function VaultSelector({ onVaultChange }: VaultSelectorProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               side="bottom"
-              align="end"
+              align="start"
               sideOffset={4}
-              className="w-[--radix-dropdown-menu-trigger-width]"
+              className="min-w-(--radix-dropdown-menu-trigger-width) bg-[#2f2f2f]! shadow-2xl ring-1 ring-white/[0.08] rounded-xl! p-1.5"
             >
               {vaults.map((vault) => (
                 <DropdownMenuItem
                   key={vault.id}
                   onClick={() => handleSwitch(vault.id)}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 py-2 px-2 rounded-lg"
                 >
-                  <Image src="/logo.svg" alt="" width={16} height={16} className="size-4 shrink-0" />
+                  <Image
+                    src="/logo.svg"
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="size-4 shrink-0"
+                  />
                   <span className="flex-1 truncate">{vault.name}</span>
                   {vault.isActive && (
                     <CheckIcon className="size-4 shrink-0 text-primary" />
@@ -134,9 +155,13 @@ export function VaultSelector({ onVaultChange }: VaultSelectorProps) {
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setCreateOpen(true)}>
+              <DropdownMenuItem onClick={() => setCreateOpen(true)} className="py-2 px-2 rounded-lg">
                 <PlusIcon className="size-4 shrink-0" />
                 <span>Create new vault</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setManageOpen(true)} className="py-2 px-2 rounded-lg">
+                <SettingsIcon className="size-4 shrink-0" />
+                <span>Manage vaults</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -147,6 +172,12 @@ export function VaultSelector({ onVaultChange }: VaultSelectorProps) {
         open={createOpen}
         onOpenChange={setCreateOpen}
         onCreated={handleCreated}
+      />
+
+      <ManageVaultsDialog
+        open={manageOpen}
+        onOpenChange={setManageOpen}
+        onVaultChange={onVaultChange}
       />
     </>
   )

@@ -4,6 +4,7 @@ import { v4 as uuid } from "uuid"
 import { getDb } from "@/lib/db"
 import { getVaultPath, safeResolvePath } from "@/lib/vaults/service"
 import { recordStructureEvent } from "@/lib/versions/structure-events"
+import { appendSyncLog } from "@/lib/sync/log"
 import type { FolderNode, TreeNode } from "@/types"
 
 export function createFolder(
@@ -39,6 +40,12 @@ export function createFolder(
   ).run(id, name, folderPath, parentId, userId, vaultId, now)
 
   recordStructureEvent(vaultId, userId, "folder_created", "folder", id, null, {
+    name,
+    path: folderPath,
+    parentId,
+  })
+
+  appendSyncLog(vaultId, "folder", id, "create", {
     name,
     path: folderPath,
     parentId,
@@ -118,6 +125,13 @@ export function renameFolder(
   }, {
     name: newName,
     path: newPath,
+  })
+
+  appendSyncLog(vaultId, "folder", id, "rename", {
+    oldName: folder.name,
+    newName,
+    oldPath: folder.path,
+    newPath,
   })
 }
 
@@ -220,6 +234,13 @@ export function moveFolder(
     parentId: newParentId,
     path: newPath,
   })
+
+  appendSyncLog(vaultId, "folder", id, "move", {
+    oldParentId,
+    newParentId,
+    oldPath,
+    newPath,
+  })
 }
 
 export function deleteFolder(
@@ -253,6 +274,11 @@ export function deleteFolder(
     name: path.basename(folder.path),
     path: folder.path,
   }, null)
+
+  appendSyncLog(vaultId, "folder", id, "delete", {
+    name: path.basename(folder.path),
+    path: folder.path,
+  })
 
   // Delete this folder and subfolders
   db.prepare(

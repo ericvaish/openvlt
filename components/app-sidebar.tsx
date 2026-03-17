@@ -53,6 +53,8 @@ import { VaultSelector } from "@/components/vault-selector"
 import { useFsWatch } from "@/hooks/use-fs-watch"
 import { BookmarksPanel } from "@/components/bookmarks-panel"
 import { CreateVaultDialog } from "@/components/create-vault-dialog"
+import { CreateFolderDialog } from "@/components/create-folder-dialog"
+import { SyncStatus } from "@/components/sync-status"
 import type { TreeNode } from "@/types/note"
 
 const quickAccessItems = [
@@ -81,6 +83,7 @@ export function AppSidebar() {
   const [tree, setTree] = React.useState<TreeNode[]>([])
   const [hasVault, setHasVault] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
+  const [folderDialogOpen, setFolderDialogOpen] = React.useState(false)
   const [user, setUser] = React.useState<{
     username: string
     displayName: string
@@ -199,21 +202,18 @@ export function AppSidebar() {
     }
   }
 
-  async function handleCreateFolder() {
+  function handleCreateFolder() {
     if (!hasVault) return
-    const name = prompt("Folder name:")
-    if (!name?.trim()) return
+    setFolderDialogOpen(true)
+  }
 
-    try {
-      await fetch("/api/folders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
-      })
-      fetchTree()
-    } catch {
-      // silently fail
-    }
+  async function handleFolderCreated(name: string) {
+    await fetch("/api/folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    })
+    fetchTree()
   }
 
   function handleSearch(e: React.FormEvent) {
@@ -224,6 +224,7 @@ export function AppSidebar() {
   }
 
   return (
+  <>
     <Sidebar>
       <SidebarHeader>
         <VaultSelector onVaultChange={handleVaultChange} />
@@ -381,6 +382,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        <SyncStatus />
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
@@ -405,11 +407,12 @@ export function AppSidebar() {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 side="top"
-                align="end"
-                className="w-[--radix-dropdown-menu-trigger-width]"
+                align="start"
+                className="min-w-(--radix-dropdown-menu-trigger-width) bg-[#2f2f2f]! shadow-2xl ring-1 ring-white/[0.08] rounded-xl! p-1.5"
               >
                 <DropdownMenuItem
                   onClick={() => openTab("__settings__", "Settings")}
+                  className="py-2 px-2 rounded-lg"
                 >
                   <SettingsIcon className="mr-2 size-4" />
                   Settings
@@ -420,6 +423,7 @@ export function AppSidebar() {
                     await fetch("/api/auth/logout", { method: "POST" })
                     router.push("/login")
                   }}
+                  className="py-2 px-2 rounded-lg"
                 >
                   <LogOutIcon className="mr-2 size-4" />
                   Log out
@@ -430,5 +434,12 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
+
+    <CreateFolderDialog
+      open={folderDialogOpen}
+      onOpenChange={setFolderDialogOpen}
+      onCreated={handleFolderCreated}
+    />
+  </>
   )
 }

@@ -36,6 +36,7 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { useNoteCache } from "@/hooks/use-note-cache"
 import { useTabStore } from "@/lib/stores/tab-store"
 import { addBookmark } from "@/components/bookmarks-panel"
+import { CreateFolderDialog } from "@/components/create-folder-dialog"
 import type { NoteMetadata } from "@/types/note"
 
 export function CommandPalette() {
@@ -46,6 +47,7 @@ export function CommandPalette() {
   const { notes } = useNoteCache()
   const [open, setOpen] = React.useState(false)
   const [mounted, setMounted] = React.useState(false)
+  const [folderDialogOpen, setFolderDialogOpen] = React.useState(false)
 
   React.useEffect(() => {
     setMounted(true)
@@ -98,18 +100,18 @@ export function CommandPalette() {
     } catch {}
   }
 
-  async function handleNewFolder() {
+  function handleNewFolder() {
     setOpen(false)
-    const name = prompt("Folder name:")
-    if (!name?.trim()) return
-    try {
-      await fetch("/api/folders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
-      })
-      window.dispatchEvent(new Event("openvlt:tree-refresh"))
-    } catch {}
+    setFolderDialogOpen(true)
+  }
+
+  async function handleFolderCreated(name: string) {
+    await fetch("/api/folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    })
+    window.dispatchEvent(new Event("openvlt:tree-refresh"))
   }
 
   function handleOpenGraph() {
@@ -218,6 +220,7 @@ export function CommandPalette() {
   if (!mounted) return null
 
   return (
+  <>
     <CommandDialog open={open} onOpenChange={setOpen}>
       <Command shouldFilter={false}>
         <CommandInput
@@ -348,5 +351,12 @@ export function CommandPalette() {
         </CommandList>
       </Command>
     </CommandDialog>
+
+    <CreateFolderDialog
+      open={folderDialogOpen}
+      onOpenChange={setFolderDialogOpen}
+      onCreated={handleFolderCreated}
+    />
+  </>
   )
 }

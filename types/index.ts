@@ -30,6 +30,8 @@ export interface NoteMetadata {
   tags: string[]
   version: number
   noteType: NoteType
+  icon: string | null
+  coverImage: string | null
   /** IDs of notes that link to this note */
   backlinks?: string[]
 }
@@ -200,4 +202,171 @@ export interface Bookmark {
   data: string | null
   sortOrder: number
   createdAt: string
+}
+
+// ── Sync Log ──
+
+export type SyncEntityType = "note" | "folder" | "attachment" | "metadata"
+
+export type SyncChangeType =
+  | "create"
+  | "update"
+  | "delete"
+  | "move"
+  | "rename"
+  | "trash"
+  | "restore"
+  | "favorite"
+
+export interface SyncLogEntry {
+  seq: number
+  vaultId: string
+  entityType: SyncEntityType
+  entityId: string
+  changeType: SyncChangeType
+  payload: Record<string, unknown> | null
+  contentHash: string | null
+  createdAt: string
+  peerOrigin: string | null
+}
+
+// ── Cloud Backup ──
+
+export type CloudProvider = "google_drive" | "dropbox" | "s3" | "webdav"
+
+export type BackupFrequency =
+  | "hourly"
+  | "every_6h"
+  | "every_12h"
+  | "daily"
+  | "weekly"
+
+export interface CloudProviderRecord {
+  id: string
+  userId: string
+  provider: CloudProvider
+  displayName: string | null
+  tokenExpiresAt: string | null
+  providerMetadata: Record<string, unknown> | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BackupConfig {
+  id: string
+  vaultId: string
+  userId: string
+  providerId: string
+  enabled: boolean
+  frequency: BackupFrequency
+  maxVersions: number
+  remoteFolderId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type BackupRunStatus = "running" | "completed" | "failed" | "partial"
+
+export interface BackupRun {
+  id: string
+  configId: string
+  status: BackupRunStatus
+  startedAt: string
+  completedAt: string | null
+  filesUploaded: number
+  filesDeleted: number
+  bytesUploaded: number
+  errorMessage: string | null
+  lastSyncLogSeq: number | null
+}
+
+export interface BackupFileEntry {
+  id: string
+  configId: string
+  noteId: string | null
+  entityType: "note" | "attachment" | "manifest"
+  localPath: string
+  remoteFileId: string | null
+  contentHash: string
+  encryptedSize: number | null
+  lastBackedUpAt: string
+}
+
+export interface CloudStorageProvider {
+  getAuthUrl(redirectUri: string): string
+  exchangeCode(
+    code: string,
+    redirectUri: string
+  ): Promise<{ accessToken: string; refreshToken: string; expiresAt: string }>
+  refreshToken(
+    refreshToken: string
+  ): Promise<{ accessToken: string; expiresAt: string }>
+  uploadFile(
+    accessToken: string,
+    folderId: string,
+    name: string,
+    data: Buffer,
+    mimeType?: string
+  ): Promise<{ fileId: string }>
+  updateFile(
+    accessToken: string,
+    fileId: string,
+    data: Buffer
+  ): Promise<void>
+  downloadFile(accessToken: string, fileId: string): Promise<Buffer>
+  deleteFile(accessToken: string, fileId: string): Promise<void>
+  createFolder(
+    accessToken: string,
+    parentId: string,
+    name: string
+  ): Promise<{ folderId: string }>
+  listFolder(
+    accessToken: string,
+    folderId: string
+  ): Promise<{ id: string; name: string; mimeType: string }[]>
+  getStorageQuota(
+    accessToken: string
+  ): Promise<{ used: number; total: number }>
+}
+
+// ── Peer Sync ──
+
+export interface SyncPeer {
+  id: string
+  displayName: string
+  createdAt: string
+}
+
+export interface SyncPairing {
+  id: string
+  localVaultId: string
+  remotePeerId: string
+  remoteUrl: string
+  syncMode: "all" | "selected"
+  isActive: boolean
+  lastSyncAt: string | null
+  createdAt: string
+}
+
+export interface SyncCursor {
+  id: string
+  pairingId: string
+  remotePeerId: string
+  lastReceivedSeq: number
+  lastSentSeq: number
+  updatedAt: string
+}
+
+export interface SyncIdMapping {
+  pairingId: string
+  localId: string
+  remoteId: string
+  entityType: SyncEntityType
+}
+
+export interface SyncSelection {
+  id: string
+  pairingId: string
+  entityType: "folder" | "note"
+  entityId: string
 }

@@ -7,8 +7,10 @@ import { TabPanel } from "@/components/tab-panel"
 import { GraphView } from "@/components/graph-view"
 import { SettingsPanel } from "@/components/settings-panel"
 import { TrashPanel } from "@/components/trash-panel"
+import { NotesListPanel } from "@/components/notes-list-panel"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { FileTextIcon } from "lucide-react"
+import { FileTextIcon, XIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { useModifierKey } from "@/hooks/use-platform"
 
 export function TabContainer() {
@@ -52,10 +54,7 @@ export function TabContainer() {
 
   // Sync URL when active tab changes
   React.useEffect(() => {
-    if (
-      activeTabId &&
-      !activeTabId.startsWith("__")
-    ) {
+    if (activeTabId && !activeTabId.startsWith("__")) {
       const current = window.location.pathname
       const target = `/notes/${activeTabId}`
       if (current !== target) {
@@ -222,6 +221,20 @@ export function TabContainer() {
               >
                 <SettingsPanel />
               </div>
+            ) : tab.noteId === "__all__" ? (
+              <div
+                key={tab.noteId}
+                className={tab.noteId === activeTabId ? "h-full" : "hidden"}
+              >
+                <NotesListPanel filter="all" />
+              </div>
+            ) : tab.noteId === "__favorites__" ? (
+              <div
+                key={tab.noteId}
+                className={tab.noteId === activeTabId ? "h-full" : "hidden"}
+              >
+                <NotesListPanel filter="favorites" />
+              </div>
             ) : tab.noteId === "__trash__" ? (
               <div
                 key={tab.noteId}
@@ -244,7 +257,30 @@ export function TabContainer() {
           <>
             <div className="w-px shrink-0 bg-border" />
             <div className="relative min-w-0 flex-1 overflow-hidden">
-              <TabPanel noteId={splitNoteId} active isSplit />
+              {splitNoteId.startsWith("__") && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={closeSplit}
+                  title="Close split pane"
+                  className="absolute right-2 top-2 z-10"
+                >
+                  <XIcon className="size-4" />
+                </Button>
+              )}
+              {splitNoteId === "__graph__" ? (
+                <GraphView />
+              ) : splitNoteId === "__settings__" ? (
+                <SettingsPanel />
+              ) : splitNoteId === "__all__" ? (
+                <NotesListPanel filter="all" />
+              ) : splitNoteId === "__favorites__" ? (
+                <NotesListPanel filter="favorites" />
+              ) : splitNoteId === "__trash__" ? (
+                <TrashPanel />
+              ) : (
+                <TabPanel noteId={splitNoteId} active isSplit />
+              )}
             </div>
           </>
         )}

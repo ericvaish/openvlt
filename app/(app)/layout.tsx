@@ -7,6 +7,7 @@ import { TabProvider } from "@/lib/stores/tab-store"
 import { TabContainer } from "@/components/tab-container"
 import { getSession } from "@/lib/auth/middleware"
 import { CustomCssInjector } from "@/components/custom-css-injector"
+import { ConflictResolver } from "@/components/conflict-resolver"
 
 export default async function AppLayout({
   children,
@@ -31,6 +32,7 @@ export default async function AppLayout({
           </SidebarInset>
           <CommandPalette />
           <CustomCssInjector />
+          <ConflictResolver />
         </SidebarProvider>
       </TabProvider>
     </TooltipProvider>

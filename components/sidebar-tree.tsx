@@ -52,6 +52,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { CreateFolderDialog } from "@/components/create-folder-dialog"
 import type { TreeNode } from "@/types/note"
 
 // ── Helpers ──
@@ -210,6 +211,10 @@ function TreeItem({
   const router = useRouter()
   const { openTab, closeTab, activeTabId } = useTabStore()
   const [dropTarget, setDropTarget] = React.useState(false)
+  const [folderDialogOpen, setFolderDialogOpen] = React.useState(false)
+  const [folderDialogParentId, setFolderDialogParentId] = React.useState<
+    string | null
+  >(null)
   const { draggedNode, setDraggedNode } = React.useContext(DragContext)
   const { expandedIds, toggle, expand } = React.useContext(ExpandedContext)
 
@@ -239,17 +244,9 @@ function TreeItem({
     } catch {}
   }
 
-  async function handleCreateSiblingFolder() {
-    const name = prompt("Folder name:")
-    if (!name?.trim()) return
-    try {
-      await fetch("/api/folders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), parentId }),
-      })
-      onRefresh()
-    } catch {}
+  function handleCreateSiblingFolder() {
+    setFolderDialogParentId(parentId)
+    setFolderDialogOpen(true)
   }
 
   async function handleCreateNote(folderId: string) {
@@ -321,18 +318,19 @@ function TreeItem({
     } catch {}
   }
 
-  async function handleCreateSubfolder(parentId: string) {
-    const name = prompt("Folder name:")
-    if (!name?.trim()) return
-    try {
-      await fetch("/api/folders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), parentId }),
-      })
-      expand(node.id)
-      onRefresh()
-    } catch {}
+  function handleCreateSubfolder(folderId: string) {
+    setFolderDialogParentId(folderId)
+    setFolderDialogOpen(true)
+  }
+
+  async function handleFolderCreated(name: string) {
+    await fetch("/api/folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, parentId: folderDialogParentId }),
+    })
+    if (folderDialogParentId === node.id) expand(node.id)
+    onRefresh()
   }
 
   async function handleDelete() {
@@ -651,7 +649,7 @@ function TreeItem({
         </ContextMenu>
 
         {expanded && node.children && node.children.length > 0 && (
-          <SidebarMenuSub>
+          <SidebarMenuSub className="border-l-sidebar-foreground/15">
             {node.children.map((child) => (
               <SidebarMenuSubItem key={child.id}>
                 {child.type === "attachment" ? (
@@ -666,7 +664,16 @@ function TreeItem({
       </>
     )
 
-    return <Wrapper>{folderContent}</Wrapper>
+    return (
+      <>
+        <Wrapper>{folderContent}</Wrapper>
+        <CreateFolderDialog
+          open={folderDialogOpen}
+          onOpenChange={setFolderDialogOpen}
+          onCreated={handleFolderCreated}
+        />
+      </>
+    )
   }
 
   // ── Note with children (advanced mode) ──
@@ -699,7 +706,7 @@ function TreeItem({
         </ContextMenu>
 
         {expanded && (
-          <SidebarMenuSub>
+          <SidebarMenuSub className="border-l-sidebar-foreground/15">
             {node.children!.map((child) => (
               <SidebarMenuSubItem key={child.id}>
                 {child.type === "attachment" ? (
@@ -717,7 +724,16 @@ function TreeItem({
       </>
     )
 
-    return <Wrapper>{noteContent}</Wrapper>
+    return (
+      <>
+        <Wrapper>{noteContent}</Wrapper>
+        <CreateFolderDialog
+          open={folderDialogOpen}
+          onOpenChange={setFolderDialogOpen}
+          onCreated={handleFolderCreated}
+        />
+      </>
+    )
   }
 
   // ── Simple note (no children) ──
@@ -740,7 +756,16 @@ function TreeItem({
     </ContextMenu>
   )
 
-  return <Wrapper>{simpleContent}</Wrapper>
+  return (
+    <>
+      <Wrapper>{simpleContent}</Wrapper>
+      <CreateFolderDialog
+        open={folderDialogOpen}
+        onOpenChange={setFolderDialogOpen}
+        onCreated={handleFolderCreated}
+      />
+    </>
+  )
 }
 
 // ── Attachment sub-item (advanced mode) ──

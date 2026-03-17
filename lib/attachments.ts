@@ -4,6 +4,7 @@ import { v4 as uuid } from "uuid"
 import { getDb } from "@/lib/db"
 import { getVaultPath, safeResolvePath } from "@/lib/vaults/service"
 import { recordStructureEvent } from "@/lib/versions/structure-events"
+import { appendSyncLog, hashContent } from "@/lib/sync/log"
 import { versionAttachment } from "@/lib/versions/attachment-versions"
 
 export interface AttachmentMeta {
@@ -79,6 +80,12 @@ export function saveAttachment(
       filePath: relativePath,
     })
 
+    appendSyncLog(vaultId, "attachment", existing.id, "update", {
+      noteId,
+      fileName: safeName,
+      filePath: relativePath,
+    }, hashContent(buffer))
+
     return {
       id: existing.id,
       noteId,
@@ -117,6 +124,12 @@ export function saveAttachment(
     fileName: finalName,
     filePath: relativePath,
   })
+
+  appendSyncLog(vaultId, "attachment", id, "create", {
+    noteId,
+    fileName: finalName,
+    filePath: relativePath,
+  }, hashContent(buffer))
 
   return {
     id,
@@ -169,6 +182,11 @@ export function deleteAttachment(
     recordStructureEvent(noteInfo.vault_id, userId, "attachment_removed", "attachment", attachmentId, {
       filePath: row.file_path,
     }, null)
+
+    appendSyncLog(noteInfo.vault_id, "attachment", attachmentId, "delete", {
+      noteId: noteInfo.note_id,
+      filePath: row.file_path,
+    })
   }
 }
 

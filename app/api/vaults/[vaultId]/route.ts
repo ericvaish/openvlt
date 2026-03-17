@@ -3,6 +3,7 @@ import {
   getVault,
   deleteVault,
   setActiveVault,
+  renameVault,
 } from "@/lib/vaults/service"
 import { AuthError, requireAuth } from "@/lib/auth/middleware"
 
@@ -16,10 +17,7 @@ export async function GET(
     const vault = getVault(vaultId, user.id)
 
     if (!vault) {
-      return NextResponse.json(
-        { error: "Vault not found" },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: "Vault not found" }, { status: 404 })
     }
 
     return NextResponse.json(vault)
@@ -51,10 +49,16 @@ export async function PUT(
       return NextResponse.json({ success: true })
     }
 
-    return NextResponse.json(
-      { error: "Unknown action" },
-      { status: 400 }
-    )
+    if (body.action === "rename") {
+      const name = body.name?.trim()
+      if (!name) {
+        return NextResponse.json({ error: "Name is required" }, { status: 400 })
+      }
+      renameVault(vaultId, user.id, name)
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json({ error: "Unknown action" }, { status: 400 })
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json(

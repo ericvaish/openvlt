@@ -6,6 +6,7 @@ import type {
   SuggestionKeyDownProps,
 } from "@tiptap/suggestion"
 import tippy, { type Instance as TippyInstance } from "tippy.js"
+import { parseEmbedUrl } from "@/lib/editor/embed-block"
 
 export interface SlashCommandItem {
   title: string
@@ -158,6 +159,31 @@ const COMMANDS: SlashCommandItem[] = [
     icon: "▶",
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).setToggleBlock().run()
+    },
+  },
+  {
+    title: "Embed",
+    description: "YouTube, tweet, or webpage",
+    icon: "🔗",
+    command: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run()
+      const url = window.prompt("Paste a URL to embed (YouTube, Twitter/X, etc.)")
+      if (!url) return
+      const embed = parseEmbedUrl(url)
+      if (embed) {
+        ;(editor.commands as any).setEmbed({
+          src: embed.embedUrl,
+          embedType: embed.type,
+          originalUrl: embed.originalUrl,
+        })
+      } else {
+        // Fallback: generic iframe
+        ;(editor.commands as any).setEmbed({
+          src: url,
+          embedType: "iframe",
+          originalUrl: url,
+        })
+      }
     },
   },
 ]

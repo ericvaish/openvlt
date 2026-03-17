@@ -3,6 +3,8 @@ import {
   getNote,
   updateNoteContent,
   updateNoteTitle,
+  updateNoteIcon,
+  updateNoteCover,
   deleteNote,
   restoreNote,
   toggleFavorite,
@@ -92,6 +94,14 @@ export async function PUT(
 
     if (body.title !== undefined) {
       updateNoteTitle(noteId, body.title, user.id, vaultId)
+    }
+
+    if (body.icon !== undefined) {
+      updateNoteIcon(noteId, body.icon || null, user.id, vaultId)
+    }
+
+    if (body.coverImage !== undefined) {
+      updateNoteCover(noteId, body.coverImage || null, user.id, vaultId)
     }
 
     if (body.parentId !== undefined && body.action === "move") {

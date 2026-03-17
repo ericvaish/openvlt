@@ -85,6 +85,8 @@ export function getOrCreateDailyNote(
       tags: tagRows.map((t) => t.name),
       version: (existing.version as number) ?? 1,
       noteType: "markdown",
+      icon: (existing.icon as string) || null,
+      coverImage: (existing.cover_image as string) || null,
     }
   }
 
