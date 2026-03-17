@@ -9,9 +9,12 @@ interface Point {
 }
 
 interface RecognizedShape {
-  type: "rectangle" | "ellipse" | "triangle" | "line"
+  type: "rectangle" | "ellipse" | "triangle" | "line" | "diamond" | "arrow" | "pentagon" | "hexagon"
   bounds: { x: number; y: number; w: number; h: number }
   confidence: number
+  // For arrow: direction from first to last point
+  arrowStart?: Point
+  arrowEnd?: Point
 }
 
 const CONFIDENCE_THRESHOLD = 0.7
@@ -25,24 +28,38 @@ export function recognizeShape(points: Point[]): RecognizedShape | null {
   const bounds = getBounds(points)
   if (bounds.w < 10 && bounds.h < 10) return null
 
-  // Try each recognizer and return the best match
   const candidates: RecognizedShape[] = []
 
   const lineResult = detectLine(points, bounds)
   if (lineResult) candidates.push(lineResult)
 
-  const rectResult = detectRectangle(points, bounds)
-  if (rectResult) candidates.push(rectResult)
+  const arrowResult = detectArrow(points, bounds)
+  if (arrowResult) candidates.push(arrowResult)
 
-  const ellipseResult = detectEllipse(points, bounds)
-  if (ellipseResult) candidates.push(ellipseResult)
+  const isClosed = isStrokeClosed(points, bounds)
 
-  const triangleResult = detectTriangle(points, bounds)
-  if (triangleResult) candidates.push(triangleResult)
+  if (isClosed) {
+    const rectResult = detectRectangle(points, bounds)
+    if (rectResult) candidates.push(rectResult)
+
+    const ellipseResult = detectEllipse(points, bounds)
+    if (ellipseResult) candidates.push(ellipseResult)
+
+    const diamondResult = detectDiamond(points, bounds)
+    if (diamondResult) candidates.push(diamondResult)
+
+    const triResult = detectTriangle(points, bounds)
+    if (triResult) candidates.push(triResult)
+
+    const pentResult = detectPolygon(points, bounds, 5, "pentagon")
+    if (pentResult) candidates.push(pentResult)
+
+    const hexResult = detectPolygon(points, bounds, 6, "hexagon")
+    if (hexResult) candidates.push(hexResult)
+  }
 
   if (candidates.length === 0) return null
 
-  // Return highest confidence match
   candidates.sort((a, b) => b.confidence - a.confidence)
   const best = candidates[0]
   return best.confidence >= CONFIDENCE_THRESHOLD ? best : null
@@ -60,6 +77,17 @@ function getBounds(points: Point[]) {
 }
 
 /**
+ * Check if a stroke is closed — endpoints are near each other.
+ */
+function isStrokeClosed(points: Point[], bounds: { w: number; h: number }): boolean {
+  const first = points[0]
+  const last = points[points.length - 1]
+  const diagonal = Math.hypot(bounds.w, bounds.h)
+  const endpointDist = Math.hypot(last.x - first.x, last.y - first.y)
+  return endpointDist < diagonal * 0.35
+}
+
+/**
  * Detect if stroke is approximately a straight line.
  */
 function detectLine(points: Point[], bounds: { x: number; y: number; w: number; h: number }): RecognizedShape | null {
@@ -69,16 +97,13 @@ function detectLine(points: Point[], bounds: { x: number; y: number; w: number; 
 
   if (lineLen < 20) return null
 
-  // Calculate total path length
   let pathLen = 0
   for (let i = 1; i < points.length; i++) {
     pathLen += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y)
   }
 
-  // A straight line has path length ≈ distance between endpoints
   const straightness = lineLen / pathLen
 
-  // Calculate max deviation from the line
   const dx = last.x - first.x
   const dy = last.y - first.y
   let maxDev = 0
@@ -92,10 +117,59 @@ function detectLine(points: Point[], bounds: { x: number; y: number; w: number; 
 
   if (confidence < CONFIDENCE_THRESHOLD) return null
 
+  return { type: "line", bounds, confidence }
+}
+
+/**
+ * Detect if stroke is approximately an arrow (line with a V at the end).
+ */
+function detectArrow(points: Point[], bounds: { x: number; y: number; w: number; h: number }): RecognizedShape | null {
+  if (points.length < 10) return null
+
+  // Split into main shaft (first ~70%) and head (~last 30%)
+  const shaftEnd = Math.floor(points.length * 0.7)
+  const shaft = points.slice(0, shaftEnd)
+  const head = points.slice(shaftEnd)
+
+  // Shaft should be roughly straight
+  const shaftFirst = shaft[0]
+  const shaftLast = shaft[shaft.length - 1]
+  const shaftLen = Math.hypot(shaftLast.x - shaftFirst.x, shaftLast.y - shaftFirst.y)
+  if (shaftLen < 30) return null
+
+  let shaftPathLen = 0
+  for (let i = 1; i < shaft.length; i++) {
+    shaftPathLen += Math.hypot(shaft[i].x - shaft[i - 1].x, shaft[i].y - shaft[i - 1].y)
+  }
+  const shaftStraightness = shaftLen / shaftPathLen
+  if (shaftStraightness < 0.85) return null
+
+  // Head should go back toward the shaft (direction reversal)
+  const headFirst = head[0]
+  const headLast = head[head.length - 1]
+
+  // The head should end closer to the shaft than it starts
+  const shaftDx = shaftLast.x - shaftFirst.x
+  const shaftDy = shaftLast.y - shaftFirst.y
+
+  // Project head endpoint onto shaft direction
+  const headDx = headLast.x - headFirst.x
+  const headDy = headLast.y - headFirst.y
+  const dot = (headDx * shaftDx + headDy * shaftDy) / (shaftLen * shaftLen)
+
+  // Arrow head should point backward (negative dot product)
+  if (dot > -0.1) return null
+
+  const confidence = shaftStraightness * 0.7 + Math.min(Math.abs(dot), 1) * 0.3
+
+  if (confidence < CONFIDENCE_THRESHOLD) return null
+
   return {
-    type: "line",
+    type: "arrow",
     bounds,
     confidence,
+    arrowStart: shaftFirst,
+    arrowEnd: shaftLast,
   }
 }
 
@@ -105,16 +179,8 @@ function detectLine(points: Point[], bounds: { x: number; y: number; w: number; 
 function detectRectangle(points: Point[], bounds: { x: number; y: number; w: number; h: number }): RecognizedShape | null {
   if (bounds.w < 20 || bounds.h < 20) return null
 
-  // Check if the stroke is closed (endpoints near each other)
-  const first = points[0]
-  const last = points[points.length - 1]
-  const closeness = Math.hypot(last.x - first.x, last.y - first.y)
-  const diagonal = Math.hypot(bounds.w, bounds.h)
-  if (closeness > diagonal * 0.25) return null
-
-  // Calculate how much of the bounding box area the stroke covers
-  // A rectangle should have points distributed along all 4 edges
   const margin = Math.max(bounds.w, bounds.h) * 0.15
+  const diagonal = Math.hypot(bounds.w, bounds.h)
   let nearTop = 0, nearBottom = 0, nearLeft = 0, nearRight = 0
 
   for (const p of points) {
@@ -127,11 +193,9 @@ function detectRectangle(points: Point[], bounds: { x: number; y: number; w: num
   const n = points.length
   const edgeCoverage = Math.min(nearTop / n, nearBottom / n, nearLeft / n, nearRight / n)
 
-  // Check aspect ratio isn't too extreme
   const aspectRatio = bounds.w / bounds.h
   const aspectPenalty = (aspectRatio > 5 || aspectRatio < 0.2) ? 0.3 : 0
 
-  // Check that points stay close to the bounding rect edges
   let totalDist = 0
   for (const p of points) {
     const distToEdge = Math.min(
@@ -145,15 +209,15 @@ function detectRectangle(points: Point[], bounds: { x: number; y: number; w: num
   const avgDist = totalDist / points.length
   const edgeProximity = 1 - Math.min(avgDist / (diagonal * 0.15), 1)
 
-  const confidence = edgeCoverage * 4 * 0.4 + edgeProximity * 0.6 - aspectPenalty
+  // Penalize if the shape has only 3 sharp corners (likely a triangle)
+  const corners = findCorners(points, 5)
+  const cornerPenalty = corners.length < 4 ? 0.3 : 0
+
+  const confidence = edgeCoverage * 4 * 0.4 + edgeProximity * 0.6 - aspectPenalty - cornerPenalty
 
   if (confidence < CONFIDENCE_THRESHOLD) return null
 
-  return {
-    type: "rectangle",
-    bounds,
-    confidence: Math.min(confidence, 1),
-  }
+  return { type: "rectangle", bounds, confidence: Math.min(confidence, 1) }
 }
 
 /**
@@ -162,14 +226,6 @@ function detectRectangle(points: Point[], bounds: { x: number; y: number; w: num
 function detectEllipse(points: Point[], bounds: { x: number; y: number; w: number; h: number }): RecognizedShape | null {
   if (bounds.w < 20 || bounds.h < 20) return null
 
-  // Check if closed
-  const first = points[0]
-  const last = points[points.length - 1]
-  const closeness = Math.hypot(last.x - first.x, last.y - first.y)
-  const diagonal = Math.hypot(bounds.w, bounds.h)
-  if (closeness > diagonal * 0.25) return null
-
-  // Check how well points fit an ellipse
   const cx = bounds.x + bounds.w / 2
   const cy = bounds.y + bounds.h / 2
   const rx = bounds.w / 2
@@ -177,11 +233,9 @@ function detectEllipse(points: Point[], bounds: { x: number; y: number; w: numbe
 
   let totalError = 0
   for (const p of points) {
-    // Normalized distance from ellipse center
     const nx = (p.x - cx) / rx
     const ny = (p.y - cy) / ry
     const dist = Math.sqrt(nx * nx + ny * ny)
-    // Perfect ellipse has dist = 1 for all points
     totalError += Math.abs(dist - 1)
   }
 
@@ -190,39 +244,83 @@ function detectEllipse(points: Point[], bounds: { x: number; y: number; w: numbe
 
   if (confidence < CONFIDENCE_THRESHOLD) return null
 
-  return {
-    type: "ellipse",
-    bounds,
-    confidence,
-  }
+  return { type: "ellipse", bounds, confidence }
 }
 
 /**
- * Detect if stroke is approximately a triangle.
+ * Detect if stroke is approximately a diamond/rhombus.
+ * A diamond has points near the midpoints of each bounding box edge.
+ */
+function detectDiamond(points: Point[], bounds: { x: number; y: number; w: number; h: number }): RecognizedShape | null {
+  if (bounds.w < 20 || bounds.h < 20) return null
+
+  const cx = bounds.x + bounds.w / 2
+  const cy = bounds.y + bounds.h / 2
+  const diagonal = Math.hypot(bounds.w, bounds.h)
+
+  // Diamond vertices: top-center, right-center, bottom-center, left-center
+  const vertices = [
+    { x: cx, y: bounds.y },             // top
+    { x: bounds.x + bounds.w, y: cy },  // right
+    { x: cx, y: bounds.y + bounds.h },  // bottom
+    { x: bounds.x, y: cy },             // left
+  ]
+
+  // Check how well points fit the diamond edges
+  let totalDist = 0
+  for (const p of points) {
+    let minDist = Infinity
+    for (let i = 0; i < 4; i++) {
+      const v1 = vertices[i]
+      const v2 = vertices[(i + 1) % 4]
+      const dist = pointToSegmentDist(p, v1, v2)
+      minDist = Math.min(minDist, dist)
+    }
+    totalDist += minDist
+  }
+
+  const avgDist = totalDist / points.length
+  const edgeProximity = 1 - Math.min(avgDist / (diagonal * 0.1), 1)
+
+  // Check that we have points near all 4 vertices
+  const margin = diagonal * 0.2
+  let vertexCoverage = 0
+  for (const v of vertices) {
+    if (points.some(p => Math.hypot(p.x - v.x, p.y - v.y) < margin)) {
+      vertexCoverage++
+    }
+  }
+
+  const confidence = edgeProximity * 0.6 + (vertexCoverage / 4) * 0.4
+
+  if (confidence < CONFIDENCE_THRESHOLD) return null
+
+  return { type: "diamond", bounds, confidence }
+}
+
+/**
+ * Dedicated triangle detector — more forgiving than the generic polygon detector.
+ * Checks for 3 corners with straight segments between them.
  */
 function detectTriangle(points: Point[], bounds: { x: number; y: number; w: number; h: number }): RecognizedShape | null {
   if (bounds.w < 20 || bounds.h < 20) return null
 
-  // Check if closed
-  const first = points[0]
-  const last = points[points.length - 1]
-  const closeness = Math.hypot(last.x - first.x, last.y - first.y)
-  const diagonal = Math.hypot(bounds.w, bounds.h)
-  if (closeness > diagonal * 0.25) return null
-
-  // Find corners — points with highest curvature
-  const corners = findCorners(points, 3)
+  const corners = findCorners(points, 4)
+  // Need exactly 3 sharp corners (allow findCorners to return 3 from a request of 4)
   if (corners.length < 3) return null
 
-  // Check that the 3 corners roughly form a triangle
-  // Verify each segment between corners is roughly straight
+  // Use only the 3 sharpest corners
+  const triCorners = corners.slice(0, 3).sort((a, b) => a - b)
+
+  // Check segment straightness between the 3 corners
   const segments = [
-    points.slice(corners[0], corners[1] + 1),
-    points.slice(corners[1], corners[2] + 1),
-    [...points.slice(corners[2]), ...points.slice(0, corners[0] + 1)],
+    points.slice(triCorners[0], triCorners[1] + 1),
+    points.slice(triCorners[1], triCorners[2] + 1),
+    [...points.slice(triCorners[2]), ...points.slice(0, triCorners[0] + 1)],
   ]
 
   let straightness = 0
+  let validSegments = 0
   for (const seg of segments) {
     if (seg.length < 2) continue
     const segFirst = seg[0]
@@ -235,18 +333,92 @@ function detectTriangle(points: Point[], bounds: { x: number; y: number; w: numb
       pathLen += Math.hypot(seg[i].x - seg[i - 1].x, seg[i].y - seg[i - 1].y)
     }
     straightness += segLen / Math.max(pathLen, 1)
+    validSegments++
   }
-  straightness /= 3
 
-  const confidence = straightness * 0.8 + (closeness < diagonal * 0.1 ? 0.2 : 0)
+  if (validSegments < 3) return null
+  straightness /= validSegments
+
+  // Triangle: straightness > 0.85 is a good triangle
+  // Give a confidence boost since rectangles tend to steal triangles
+  const confidence = Math.min(1, straightness * 0.9 + 0.1)
 
   if (confidence < CONFIDENCE_THRESHOLD) return null
 
-  return {
-    type: "triangle",
-    bounds,
-    confidence,
+  return { type: "triangle", bounds, confidence }
+}
+
+/**
+ * Detect N-sided regular polygon (triangle, pentagon, hexagon).
+ * Uses corner detection and segment straightness analysis.
+ */
+function detectPolygon(
+  points: Point[],
+  bounds: { x: number; y: number; w: number; h: number },
+  sides: number,
+  type: "triangle" | "pentagon" | "hexagon"
+): RecognizedShape | null {
+  if (bounds.w < 20 || bounds.h < 20) return null
+
+  const corners = findCorners(points, sides)
+  if (corners.length < sides) return null
+
+  // Build segments between consecutive corners (wrapping around)
+  const segments: Point[][] = []
+  for (let i = 0; i < sides; i++) {
+    const start = corners[i]
+    const end = corners[(i + 1) % sides]
+    if (end > start) {
+      segments.push(points.slice(start, end + 1))
+    } else {
+      segments.push([...points.slice(start), ...points.slice(0, end + 1)])
+    }
   }
+
+  // Check segment straightness
+  let straightness = 0
+  let validSegments = 0
+  for (const seg of segments) {
+    if (seg.length < 2) continue
+    const segFirst = seg[0]
+    const segLast = seg[seg.length - 1]
+    const segLen = Math.hypot(segLast.x - segFirst.x, segLast.y - segFirst.y)
+    if (segLen < 1) continue
+
+    let pathLen = 0
+    for (let i = 1; i < seg.length; i++) {
+      pathLen += Math.hypot(seg[i].x - seg[i - 1].x, seg[i].y - seg[i - 1].y)
+    }
+    straightness += segLen / Math.max(pathLen, 1)
+    validSegments++
+  }
+
+  if (validSegments < sides) return null
+  straightness /= validSegments
+
+  // Check that corner angles are roughly equal for regular polygons
+  const expectedAngle = Math.PI * (sides - 2) / sides
+  let angleError = 0
+  for (let i = 0; i < corners.length; i++) {
+    const prev = points[corners[(i - 1 + corners.length) % corners.length]]
+    const curr = points[corners[i]]
+    const next = points[corners[(i + 1) % corners.length]]
+
+    const a1 = Math.atan2(prev.y - curr.y, prev.x - curr.x)
+    const a2 = Math.atan2(next.y - curr.y, next.x - curr.x)
+    let angle = Math.abs(a2 - a1)
+    if (angle > Math.PI) angle = 2 * Math.PI - angle
+
+    angleError += Math.abs(angle - (Math.PI - expectedAngle))
+  }
+  angleError /= corners.length
+  const angleScore = Math.max(0, 1 - angleError * 2)
+
+  const confidence = straightness * 0.6 + angleScore * 0.4
+
+  if (confidence < CONFIDENCE_THRESHOLD) return null
+
+  return { type, bounds, confidence }
 }
 
 /**
@@ -271,7 +443,6 @@ function findCorners(points: Point[], maxCorners: number): number[] {
     angles.push({ index: i, angle })
   }
 
-  // Sort by sharpest angle and pick top N
   angles.sort((a, b) => b.angle - a.angle)
 
   const corners: number[] = []
@@ -286,4 +457,21 @@ function findCorners(points: Point[], maxCorners: number): number[] {
   }
 
   return corners.sort((a, b) => a - b)
+}
+
+/**
+ * Distance from a point to a line segment.
+ */
+function pointToSegmentDist(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return Math.hypot(p.x - a.x, p.y - a.y)
+
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq
+  t = Math.max(0, Math.min(1, t))
+
+  const projX = a.x + t * dx
+  const projY = a.y + t * dy
+  return Math.hypot(p.x - projX, p.y - projY)
 }

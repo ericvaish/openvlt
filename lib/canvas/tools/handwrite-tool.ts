@@ -250,7 +250,6 @@ export class HandwriteTool extends StateNode {
         const { type, bounds } = recognized
 
         if (type === "line") {
-          // Create an arrow shape (simpler API than line) from first to last point
           const first = absPoints[0]
           const last = absPoints[absPoints.length - 1]
           this.editor.createShape({
@@ -265,12 +264,34 @@ export class HandwriteTool extends StateNode {
               arrowheadEnd: "none",
             },
           } as Parameters<typeof this.editor.createShape>[0])
+        } else if (type === "arrow") {
+          const start = recognized.arrowStart ?? absPoints[0]
+          const end = recognized.arrowEnd ?? absPoints[absPoints.length - 1]
+          this.editor.createShape({
+            id: this.shapeId,
+            type: "arrow",
+            x: start.x,
+            y: start.y,
+            props: {
+              start: { x: 0, y: 0 },
+              end: { x: end.x - start.x, y: end.y - start.y },
+              arrowheadStart: "none",
+              arrowheadEnd: "arrow",
+            },
+          } as Parameters<typeof this.editor.createShape>[0])
         } else {
-          // Create a geo shape (rectangle, ellipse, triangle)
-          const geoMap = { rectangle: "rectangle", ellipse: "ellipse", triangle: "triangle" } as const
+          const geoMap: Record<string, string> = {
+            rectangle: "rectangle",
+            ellipse: "ellipse",
+            triangle: "triangle",
+            diamond: "diamond",
+            pentagon: "pentagon",
+            hexagon: "hexagon",
+          }
+          const geo = geoMap[type] ?? "rectangle"
           try {
             const { GeoShapeGeoStyle } = require("@tldraw/tlschema")
-            this.editor.setStyleForNextShapes(GeoShapeGeoStyle, geoMap[type])
+            this.editor.setStyleForNextShapes(GeoShapeGeoStyle, geo)
           } catch {}
           this.editor.createShape({
             id: this.shapeId,
@@ -280,9 +301,9 @@ export class HandwriteTool extends StateNode {
             props: {
               w: Math.max(20, bounds.w),
               h: Math.max(20, bounds.h),
-              geo: geoMap[type],
+              geo,
             },
-          })
+          } as Parameters<typeof this.editor.createShape>[0])
         }
 
         this.shapeId = "" as ReturnType<typeof createShapeId>
