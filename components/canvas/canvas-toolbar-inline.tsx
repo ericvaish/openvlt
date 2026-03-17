@@ -89,8 +89,11 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
   const [currentPageSize, setCurrentPageSize] = React.useState(initialPageSize)
   const [currentBackground, setCurrentBackground] = React.useState(initialBackground)
   const [activeGeo, setActiveGeo] = React.useState("rectangle")
+  const [activeEraser, setActiveEraser] = React.useState<"eraser" | "pixel-eraser">("eraser")
+  const [eraserMenuOpen, setEraserMenuOpen] = React.useState(false)
   const [collapsed, setCollapsed] = React.useState(false)
   const shapesRef = React.useRef<HTMLDivElement>(null)
+  const eraserRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     if (!editor) return
@@ -101,7 +104,7 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
   }, [editor])
 
   React.useEffect(() => {
-    if (!shapesOpen && !pageMenuOpen && !strokeMenuOpen) return
+    if (!shapesOpen && !pageMenuOpen && !strokeMenuOpen && !eraserMenuOpen) return
     const handler = (e: MouseEvent) => {
       if (shapesOpen && shapesRef.current && !shapesRef.current.contains(e.target as Node)) {
         setShapesOpen(false)
@@ -112,10 +115,13 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
       if (strokeMenuOpen && strokeMenuRef.current && !strokeMenuRef.current.contains(e.target as Node)) {
         setStrokeMenuOpen(false)
       }
+      if (eraserMenuOpen && eraserRef.current && !eraserRef.current.contains(e.target as Node)) {
+        setEraserMenuOpen(false)
+      }
     }
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
-  }, [shapesOpen, pageMenuOpen, strokeMenuOpen])
+  }, [shapesOpen, pageMenuOpen, strokeMenuOpen, eraserMenuOpen])
 
   const [currentRuleStyle, setCurrentRuleStyle] = React.useState(ruleStyle)
   const [currentCustomSpacing, setCurrentCustomSpacing] = React.useState(customSpacing)
@@ -189,9 +195,48 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
       <button onClick={() => selectTool("handwrite")} className={btn(currentTool === "handwrite" || currentTool === "draw")} title="Pen (D)">
         <PenToolIcon className="size-3.5" />
       </button>
-      <button onClick={() => selectTool("eraser")} className={btn(currentTool === "eraser")} title="Eraser (E)">
-        <EraserIcon className="size-3.5" />
-      </button>
+      {/* Eraser with dropdown for stroke/pixel mode */}
+      <div ref={eraserRef} className="relative">
+        <button
+          onClick={() => selectTool(activeEraser)}
+          className={btn(currentTool === "eraser" || currentTool === "pixel-eraser")}
+          title={activeEraser === "eraser" ? "Stroke Eraser (E)" : "Pixel Eraser"}
+        >
+          <EraserIcon className="size-3.5" />
+        </button>
+        <button
+          onClick={() => setEraserMenuOpen(!eraserMenuOpen)}
+          className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center text-muted-foreground"
+        >
+          <ChevronDownIcon className="size-2" />
+        </button>
+        {eraserMenuOpen && (
+          <div className="absolute left-0 top-full z-50 mt-1 flex flex-col gap-0.5 rounded-lg border bg-background p-1 shadow-md" style={{ minWidth: 140 }}>
+            <button
+              onClick={() => { setActiveEraser("eraser"); selectTool("eraser"); setEraserMenuOpen(false) }}
+              className={`flex items-center gap-2 rounded px-2 py-1.5 text-xs transition-colors ${
+                activeEraser === "eraser"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              <EraserIcon className="size-3.5" />
+              Stroke Eraser
+            </button>
+            <button
+              onClick={() => { setActiveEraser("pixel-eraser"); selectTool("pixel-eraser"); setEraserMenuOpen(false) }}
+              className={`flex items-center gap-2 rounded px-2 py-1.5 text-xs transition-colors ${
+                activeEraser === "pixel-eraser"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              <EraserIcon className="size-3.5" />
+              Pixel Eraser
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Stroke style dropdown */}
       <div ref={strokeMenuRef} className="relative">

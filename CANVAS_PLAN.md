@@ -140,14 +140,16 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
   - Works across all shape types (handwrite, text-note, geo, etc.)
 - [x] Selected content can be moved, copied, resized, deleted as group (tldraw built-in)
 
-## Phase 9: Eraser Modes
+## Phase 9: Eraser Modes ✅
 
-- [ ] Stroke eraser (tldraw built-in) — erases entire stroke on touch
-- [ ] Pixel eraser (custom tool):
-  - Compute intersection of eraser circle with freehand paths
-  - Split affected paths at intersection points
-  - Remove intersecting segments
-- [ ] Toggle between stroke/pixel eraser in toolbar
+- [x] Stroke eraser (tldraw built-in) — erases entire stroke on touch
+- [x] Eraser preview: handwrite strokes turn grey at 30% opacity when eraser passes over
+- [x] Pixel eraser (custom tool):
+  - Eraser circle cursor with trail visualization
+  - Finds handwrite strokes intersecting with eraser path
+  - Splits affected strokes at erased sections into new shapes
+  - Preserves remaining segments with original color/size/pressure
+- [x] Eraser dropdown in toolbar to switch between stroke/pixel mode
 
 ## Phase 10: Version History for Canvas
 
