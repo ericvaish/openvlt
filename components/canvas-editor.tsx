@@ -797,14 +797,8 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         .canvas-editor-wrapper .tl-shape[data-shape-type="handwrite"] svg {
           overflow: visible !important;
         }
-        /* Fix blurry rendering — prevent low-res rasterization */
-        .canvas-editor-wrapper .tl-html-layer {
-          contain: layout style !important;
-          will-change: transform;
-        }
-        .canvas-editor-wrapper .tl-shape {
-          contain: layout !important;
-          will-change: transform;
+        .canvas-editor-wrapper .tl-shape[data-shape-type="text-note"] {
+          contain: none !important;
         }
         .canvas-editor-wrapper .tl-grid {
           contain: none !important;
