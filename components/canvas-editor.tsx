@@ -278,6 +278,16 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
                 }
                 lastTapTime = 0
               } else {
+                // Single tap on empty canvas — deselect/close any editing shape
+                const point = editor.screenToPage({ x: pe.clientX, y: pe.clientY })
+                const hitShape = editor.getShapeAtPoint(point)
+                if (!hitShape && editor.getEditingShapeId()) {
+                  editor.setEditingShape(null)
+                  editor.selectNone()
+                  editor.setCurrentTool("draw")
+                } else if (!hitShape) {
+                  editor.selectNone()
+                }
                 lastTapTime = Date.now()
                 lastTapX = pe.clientX
                 lastTapY = pe.clientY

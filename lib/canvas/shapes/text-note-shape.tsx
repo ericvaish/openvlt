@@ -154,12 +154,21 @@ function TextNoteComponent({
   )
 
   React.useEffect(() => {
-    if (isEditing && editor && !editor.isFocused) {
+    if (isEditing && editor) {
+      // Focus immediately, then again after a frame to ensure keyboard opens on mobile
+      editor.commands.focus("end")
       requestAnimationFrame(() => {
-        editor.commands.focus("end")
+        if (!editor.isFocused) {
+          editor.commands.focus("end")
+        }
+        // Also try focusing the underlying contenteditable element directly
+        const el = document.querySelector(
+          `[data-shape-id="${shape.id}"] .ProseMirror`
+        ) as HTMLElement | null
+        if (el) el.focus()
       })
     }
-  }, [isEditing, editor])
+  }, [isEditing, editor, shape.id])
 
   return (
     <div
@@ -233,9 +242,7 @@ export class TextNoteShapeUtil extends ShapeUtil<TextNoteShape> {
             border: isEditing
               ? "1.5px solid var(--color-primary, #3b82f6)"
               : "1.5px solid transparent",
-            backgroundColor: isEditing
-              ? "var(--color-background, #fff)"
-              : "transparent",
+            backgroundColor: isEditing ? "#ffffff" : "transparent",
             transition: "border-color 0.15s, background-color 0.15s",
             overflow: "visible",
             position: "relative",
