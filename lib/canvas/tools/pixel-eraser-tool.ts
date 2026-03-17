@@ -89,7 +89,25 @@ export class PixelEraserTool extends StateNode {
     const shapesToCreate: Parameters<typeof this.editor.createShape>[0][] = []
 
     for (const shape of shapes) {
-      if (shape.type !== "handwrite") continue
+      // For non-handwrite shapes (text, geo, etc.), delete if eraser touches their bounds
+      if (shape.type !== "handwrite") {
+        try {
+          const bounds = this.editor.getShapeGeometry(shape).bounds
+          const shapeLeft = shape.x
+          const shapeTop = shape.y
+          const shapeRight = shape.x + bounds.w
+          const shapeBottom = shape.y + bounds.h
+
+          for (const ep of this.eraserPath) {
+            if (ep.x >= shapeLeft - radius && ep.x <= shapeRight + radius &&
+                ep.y >= shapeTop - radius && ep.y <= shapeBottom + radius) {
+              shapesToDelete.push(shape.id)
+              break
+            }
+          }
+        } catch {}
+        continue
+      }
 
       let pts: { x: number; y: number; z: number }[]
       try {

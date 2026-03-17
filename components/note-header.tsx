@@ -218,7 +218,7 @@ export function NoteHeader({ note, isSplit = false, pane = "main", toolbarSlot }
       {/* Desktop: single-row header.
           min-w-0: prevents header buttons from causing horizontal overflow
           in split view. The title input absorbs the squeeze. Do not remove. */}
-      <header className="hidden h-10 min-w-0 shrink-0 items-center gap-2 overflow-x-auto border-b px-4 scrollbar-none [&::-webkit-scrollbar]:hidden md:flex">
+      <header className={`hidden h-10 min-w-0 shrink-0 items-center gap-2 border-b px-4 md:flex ${toolbarSlot ? "" : "overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden"}`}>
         <IconPicker value={icon} onChange={handleIconChange}>
           <button
             className="flex shrink-0 items-center justify-center rounded-md hover:bg-accent"
@@ -425,8 +425,9 @@ export function NoteHeader({ note, isSplit = false, pane = "main", toolbarSlot }
         )}
       </header>
 
-      {/* Mobile: two-row header (hidden entirely for canvas notes which use the desktop header) */}
-      <div className={`shrink-0 border-b md:hidden ${toolbarSlot ? "hidden" : ""}`}>
+      {/* Mobile: two-row header (hidden on desktop and for canvas notes) */}
+      <div className={`openvlt-mobile-header shrink-0 border-b ${toolbarSlot ? "hidden" : ""}`}>
+        <style>{`@media (min-width: 600px) { .openvlt-mobile-header { display: none !important; } }`}</style>
         {/* Row 1: icon + title + timestamp */}
         <div className="flex h-10 items-center gap-2 px-3">
           <IconPicker value={icon} onChange={handleIconChange}>
