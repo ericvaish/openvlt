@@ -30,6 +30,7 @@ import {
   ExternalLinkIcon,
   PenLineIcon,
   LayoutDashboardIcon,
+  XIcon,
 } from "lucide-react"
 import {
   SidebarMenu,
@@ -55,6 +56,91 @@ import {
 import { CreateFolderDialog } from "@/components/create-folder-dialog"
 import { confirmDialog, promptDialog } from "@/lib/dialogs"
 import type { TreeNode } from "@/types/note"
+
+// ── Multi-select context ──
+
+interface MultiSelectState {
+  selectedIds: Set<string>
+  lastClickedId: string | null
+  /** Handle click with modifier keys for multi-select */
+  handleSelect: (
+    nodeId: string,
+    e: React.MouseEvent,
+    flatOrder: string[]
+  ) => boolean
+  clearSelection: () => void
+  selectAll: (ids: string[]) => void
+  isSelected: (id: string) => boolean
+}
+
+const MultiSelectContext = React.createContext<MultiSelectState>({
+  selectedIds: new Set(),
+  lastClickedId: null,
+  handleSelect: () => false,
+  clearSelection: () => {},
+  selectAll: () => {},
+  isSelected: () => false,
+})
+
+export function useMultiSelect() {
+  return React.useContext(MultiSelectContext)
+}
+
+/** Flatten the visible tree into an ordered list of node IDs (respects expanded state) */
+function flattenVisibleTree(
+  nodes: TreeNode[],
+  expandedIds: Set<string>
+): string[] {
+  const result: string[] = []
+  for (const node of nodes) {
+    result.push(node.id)
+    if (node.children && expandedIds.has(node.id)) {
+      result.push(...flattenVisibleTree(node.children, expandedIds))
+    }
+  }
+  return result
+}
+
+/** Find a node by ID in the tree */
+function findNodeById(nodes: TreeNode[], id: string): TreeNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    if (node.children) {
+      const found = findNodeById(node.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+/** Find the parent ID of a node */
+function findParentId(
+  nodes: TreeNode[],
+  targetId: string,
+  parentId: string | null = null
+): string | null | undefined {
+  for (const node of nodes) {
+    if (node.id === targetId) return parentId
+    if (node.children) {
+      const found = findParentId(node.children, targetId, node.id)
+      if (found !== undefined) return found
+    }
+  }
+  return undefined // not found
+}
+
+/** Collect all descendant IDs (notes + folders) under a node */
+function collectDescendantIds(node: TreeNode): string[] {
+  const ids: string[] = []
+  if (node.children) {
+    for (const child of node.children) {
+      if (child.type === "attachment") continue
+      ids.push(child.id)
+      ids.push(...collectDescendantIds(child))
+    }
+  }
+  return ids
+}
 
 // ── Helpers ──
 
@@ -159,8 +245,206 @@ export function SidebarTree({
   activeItemId = null,
   onItemActivate,
 }: SidebarTreeProps) {
+  const { openTab } = useTabStore()
   const [draggedNode, setDraggedNode] = React.useState<TreeNode | null>(null)
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(loadExpanded)
+
+  // ── Multi-select state ──
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  const lastClickedIdRef = React.useRef<string | null>(null)
+
+  const multiSelectCtx = React.useMemo<MultiSelectState>(() => {
+    function handleSelect(
+      nodeId: string,
+      e: React.MouseEvent,
+      flatOrder: string[]
+    ): boolean {
+      const isMeta = e.metaKey || e.ctrlKey
+      const isShift = e.shiftKey
+
+      if (!isMeta && !isShift) {
+        // Regular click — clear selection, let normal behavior happen
+        setSelectedIds(new Set())
+        lastClickedIdRef.current = nodeId
+        return false // did NOT handle multi-select
+      }
+
+      if (isMeta) {
+        // Cmd/Ctrl+Click — toggle individual item
+        setSelectedIds((prev) => {
+          const next = new Set(prev)
+          if (next.has(nodeId)) next.delete(nodeId)
+          else next.add(nodeId)
+          return next
+        })
+        lastClickedIdRef.current = nodeId
+        return true // handled
+      }
+
+      if (isShift && lastClickedIdRef.current) {
+        // Shift+Click — range selection
+        const lastIdx = flatOrder.indexOf(lastClickedIdRef.current)
+        const currIdx = flatOrder.indexOf(nodeId)
+        if (lastIdx === -1 || currIdx === -1) {
+          setSelectedIds(new Set([nodeId]))
+          lastClickedIdRef.current = nodeId
+          return true
+        }
+        const start = Math.min(lastIdx, currIdx)
+        const end = Math.max(lastIdx, currIdx)
+        const rangeIds = flatOrder.slice(start, end + 1)
+        setSelectedIds((prev) => {
+          const next = new Set(prev)
+          for (const id of rangeIds) next.add(id)
+          return next
+        })
+        return true // handled
+      }
+
+      lastClickedIdRef.current = nodeId
+      return false
+    }
+
+    return {
+      selectedIds,
+      lastClickedId: lastClickedIdRef.current,
+      handleSelect,
+      clearSelection: () => {
+        setSelectedIds(new Set())
+        lastClickedIdRef.current = null
+      },
+      selectAll: (ids: string[]) => {
+        setSelectedIds(new Set(ids))
+      },
+      isSelected: (id: string) => selectedIds.has(id),
+    }
+  }, [selectedIds])
+
+  // ── Keyboard navigation (arrow keys, Enter, Escape, Home/End) ──
+  const treeContainerRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Escape clears selection
+      if (e.key === "Escape" && selectedIds.size > 0) {
+        setSelectedIds(new Set())
+        lastClickedIdRef.current = null
+        return
+      }
+
+      // Only handle arrow keys when the sidebar tree area is focused
+      // Check if focus is inside the tree or the sidebar
+      const sidebarEl = treeContainerRef.current?.closest("[data-sidebar]")
+      if (!sidebarEl?.contains(document.activeElement) && document.activeElement !== document.body) return
+
+      // Ignore if user is typing in an input
+      const tag = (document.activeElement as HTMLElement)?.tagName
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
+
+      if (!activeItemId && !["ArrowDown", "Home"].includes(e.key)) return
+
+      const flat = flattenVisibleTree(nodes, expandedIds)
+      if (flat.length === 0) return
+
+      const setActive = onItemActivate ?? (() => {})
+
+      switch (e.key) {
+        case "ArrowDown": {
+          e.preventDefault()
+          if (!activeItemId) {
+            setActive(flat[0])
+            return
+          }
+          const idx = flat.indexOf(activeItemId)
+          if (idx < flat.length - 1) setActive(flat[idx + 1])
+          break
+        }
+        case "ArrowUp": {
+          e.preventDefault()
+          if (!activeItemId) return
+          const idx = flat.indexOf(activeItemId)
+          if (idx > 0) setActive(flat[idx - 1])
+          break
+        }
+        case "ArrowRight": {
+          e.preventDefault()
+          if (!activeItemId) return
+          const node = findNodeById(nodes, activeItemId)
+          if (!node) return
+          if (node.type === "folder") {
+            if (!expandedIds.has(node.id)) {
+              // Expand the folder
+              setExpandedIds((prev) => {
+                const next = new Set(prev)
+                next.add(node.id)
+                saveExpanded(next)
+                return next
+              })
+            } else if (node.children && node.children.length > 0) {
+              // Already expanded — move to first child
+              const firstChild = node.children.find((c) => c.type !== "attachment")
+              if (firstChild) setActive(firstChild.id)
+            }
+          }
+          break
+        }
+        case "ArrowLeft": {
+          e.preventDefault()
+          if (!activeItemId) return
+          const node = findNodeById(nodes, activeItemId)
+          if (!node) return
+          if (node.type === "folder" && expandedIds.has(node.id)) {
+            // Collapse the folder
+            setExpandedIds((prev) => {
+              const next = new Set(prev)
+              next.delete(node.id)
+              saveExpanded(next)
+              return next
+            })
+          } else {
+            // Move to parent
+            const pid = findParentId(nodes, activeItemId)
+            if (pid) setActive(pid)
+          }
+          break
+        }
+        case "Home": {
+          e.preventDefault()
+          if (flat.length > 0) setActive(flat[0])
+          break
+        }
+        case "End": {
+          e.preventDefault()
+          if (flat.length > 0) setActive(flat[flat.length - 1])
+          break
+        }
+        case "Enter": {
+          e.preventDefault()
+          if (!activeItemId) return
+          const node = findNodeById(nodes, activeItemId)
+          if (!node) return
+          if (node.type === "folder") {
+            // Toggle folder
+            setExpandedIds((prev) => {
+              const next = new Set(prev)
+              if (next.has(node.id)) next.delete(node.id)
+              else next.add(node.id)
+              saveExpanded(next)
+              return next
+            })
+          } else {
+            // Open note directly
+            openTab(node.id, node.name)
+          }
+          break
+        }
+        default:
+          return // Don't prevent default for other keys
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [selectedIds.size, activeItemId, nodes, expandedIds, onItemActivate])
 
   // Auto-expand ancestor folders to reveal the active note (e.g. on refresh)
   React.useEffect(() => {
@@ -207,6 +491,21 @@ export function SidebarTree({
     [expandedIds, activeFolderId, onFolderActivate, activeItemId, onItemActivate]
   )
 
+  // Memoize flat order for shift-click range selection
+  const flatOrder = React.useMemo(
+    () => flattenVisibleTree(nodes, expandedIds),
+    [nodes, expandedIds]
+  )
+
+  // Scroll active item into view when navigating with keyboard
+  React.useEffect(() => {
+    if (!activeItemId || !treeContainerRef.current) return
+    const el = treeContainerRef.current.querySelector(
+      `[data-tree-id="${CSS.escape(activeItemId)}"]`
+    )
+    el?.scrollIntoView({ block: "nearest" })
+  }, [activeItemId])
+
   if (nodes.length === 0) {
     return (
       <div className="px-2 py-4 text-center text-sm text-muted-foreground">
@@ -236,24 +535,42 @@ export function SidebarTree({
   }
 
   return (
-    <ExpandedContext.Provider value={expandedCtx}>
-      <DragContext.Provider value={{ draggedNode, setDraggedNode }}>
-        <SidebarMenu
-          onDragOver={(e) => {
-            e.preventDefault()
-            e.currentTarget.classList.add("bg-accent/30")
-          }}
-          onDragLeave={(e) => {
-            e.currentTarget.classList.remove("bg-accent/30")
-          }}
-          onDrop={handleRootDrop}
-        >
-          {nodes.map((node) => (
-            <TreeItem key={node.id} node={node} onRefresh={onRefresh} parentId={null} />
-          ))}
-        </SidebarMenu>
-      </DragContext.Provider>
-    </ExpandedContext.Provider>
+    <MultiSelectContext.Provider value={multiSelectCtx}>
+      <ExpandedContext.Provider value={expandedCtx}>
+        <DragContext.Provider value={{ draggedNode, setDraggedNode }}>
+          <div ref={treeContainerRef} tabIndex={-1} className="outline-none">
+          {selectedIds.size > 1 && (
+            <SelectionBar
+              nodes={nodes}
+              selectedIds={selectedIds}
+              onRefresh={onRefresh}
+              onClearSelection={multiSelectCtx.clearSelection}
+            />
+          )}
+          <SidebarMenu
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.currentTarget.classList.add("bg-accent/30")
+            }}
+            onDragLeave={(e) => {
+              e.currentTarget.classList.remove("bg-accent/30")
+            }}
+            onDrop={handleRootDrop}
+          >
+            {nodes.map((node) => (
+              <TreeItem
+                key={node.id}
+                node={node}
+                onRefresh={onRefresh}
+                parentId={null}
+                flatOrder={flatOrder}
+              />
+            ))}
+          </SidebarMenu>
+          </div>
+        </DragContext.Provider>
+      </ExpandedContext.Provider>
+    </MultiSelectContext.Provider>
   )
 }
 
@@ -264,11 +581,13 @@ function TreeItem({
   onRefresh,
   nested = false,
   parentId = null,
+  flatOrder,
 }: {
   node: TreeNode
   onRefresh: () => void
   nested?: boolean
   parentId?: string | null
+  flatOrder: string[]
 }) {
   const router = useRouter()
   const { openTab, closeTab, activeTabId } = useTabStore()
@@ -287,10 +606,13 @@ function TreeItem({
     activeItemId,
     setActiveItemId,
   } = React.useContext(ExpandedContext)
+  const { handleSelect, isSelected, selectedIds } = React.useContext(MultiSelectContext)
 
   const expanded = expandedIds.has(node.id)
   const isActive = activeTabId === node.id
   const isItemActive = activeItemId === node.id
+  const isNodeSelected = isSelected(node.id)
+  const hasMultiSelection = selectedIds.size > 1
 
   function openNote() {
     // Non-note files (from "show all files" mode) - download them
@@ -711,12 +1033,18 @@ function TreeItem({
       : {}
 
   const dropClass = dropTarget ? "ring-2 ring-primary/50 rounded-md" : ""
+  const selectClass = isNodeSelected
+    ? "bg-primary/10 ring-1 ring-inset ring-primary/30 rounded-md"
+    : ""
 
   // ── Shared: wrapper + button based on nesting ──
 
   const Wrapper = nested ? React.Fragment : SidebarMenuItem
   const Btn = nested ? SidebarMenuSubButton : SidebarMenuButton
   const NoteIcon = node.type === "file" ? getNoteIcon(node.path) : FileTextIcon
+
+  // Determine which context menu to use: bulk or single
+  const contextMenuContent = hasMultiSelection && isNodeSelected
 
   // ── Folder rendering ──
 
@@ -726,12 +1054,16 @@ function TreeItem({
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <Btn
-              onClick={() => {
-                toggle(node.id)
-                setActiveFolderId(node.id)
-                setActiveItemId(node.id)
+              data-tree-id={node.id}
+              onClick={(e: React.MouseEvent) => {
+                const handled = handleSelect(node.id, e, flatOrder)
+                if (!handled) {
+                  toggle(node.id)
+                  setActiveFolderId(node.id)
+                  setActiveItemId(node.id)
+                }
               }}
-              className={`${dropClass} ${isItemActive ? "ring-2 ring-inset ring-primary! rounded-md font-medium" : ""}`}
+              className={`${dropClass} ${selectClass} ${!isNodeSelected && isItemActive ? "ring-2 ring-inset ring-primary! rounded-md font-medium" : ""}`}
               {...dragProps}
               {...dropProps}
             >
@@ -751,7 +1083,15 @@ function TreeItem({
             </Btn>
           </ContextMenuTrigger>
           <ContextMenuContent className="w-52">
-            {folderContextMenu}
+            {contextMenuContent ? (
+              <BulkContextMenu
+                selectedIds={selectedIds}
+                onRefresh={onRefresh}
+                nodes={[]}
+              />
+            ) : (
+              folderContextMenu
+            )}
           </ContextMenuContent>
         </ContextMenu>
 
@@ -762,7 +1102,7 @@ function TreeItem({
                 {child.type === "attachment" ? (
                   <AttachmentItem node={child} onRefresh={onRefresh} />
                 ) : (
-                  <TreeItem node={child} onRefresh={onRefresh} nested parentId={node.id} />
+                  <TreeItem node={child} onRefresh={onRefresh} nested parentId={node.id} flatOrder={flatOrder} />
                 )}
               </SidebarMenuSubItem>
             ))}
@@ -793,12 +1133,16 @@ function TreeItem({
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <Btn
+              data-tree-id={node.id}
               isActive={isActive}
-              onClick={() => {
-                openNote()
-                toggle(node.id)
+              onClick={(e: React.MouseEvent) => {
+                const handled = handleSelect(node.id, e, flatOrder)
+                if (!handled) {
+                  openNote()
+                  toggle(node.id)
+                }
               }}
-              className={isItemActive ? "ring-2 ring-inset ring-primary! rounded-md" : ""}
+              className={`${selectClass} ${!isNodeSelected && isItemActive ? "ring-2 ring-inset ring-primary! rounded-md" : ""}`}
               {...dragProps}
             >
               <ChevronRightIcon
@@ -809,7 +1153,15 @@ function TreeItem({
             </Btn>
           </ContextMenuTrigger>
           <ContextMenuContent className="w-52">
-            {noteContextMenu}
+            {contextMenuContent ? (
+              <BulkContextMenu
+                selectedIds={selectedIds}
+                onRefresh={onRefresh}
+                nodes={[]}
+              />
+            ) : (
+              noteContextMenu
+            )}
           </ContextMenuContent>
         </ContextMenu>
 
@@ -850,9 +1202,13 @@ function TreeItem({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <Btn
+          data-tree-id={node.id}
           isActive={isActive}
-          onClick={() => openNote()}
-          className={isItemActive ? "ring-2 ring-inset ring-primary! rounded-md" : ""}
+          onClick={(e: React.MouseEvent) => {
+            const handled = handleSelect(node.id, e, flatOrder)
+            if (!handled) openNote()
+          }}
+          className={`${selectClass} ${!isNodeSelected && isItemActive ? "ring-2 ring-inset ring-primary! rounded-md" : ""}`}
           {...dragProps}
         >
           <NoteIcon className="size-4 shrink-0" />
@@ -860,7 +1216,15 @@ function TreeItem({
         </Btn>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
-        {noteContextMenu}
+        {contextMenuContent ? (
+          <BulkContextMenu
+            selectedIds={selectedIds}
+            onRefresh={onRefresh}
+            nodes={[]}
+          />
+        ) : (
+          noteContextMenu
+        )}
       </ContextMenuContent>
     </ContextMenu>
   )
@@ -969,6 +1333,236 @@ function AttachmentItem({
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
+  )
+}
+
+// ── Bulk selection bar ──
+
+function SelectionBar({
+  nodes,
+  selectedIds,
+  onRefresh,
+  onClearSelection,
+}: {
+  nodes: TreeNode[]
+  selectedIds: Set<string>
+  onRefresh: () => void
+  onClearSelection: () => void
+}) {
+  const { closeTab } = useTabStore()
+
+  /** Find a node in the tree by ID */
+  function findNode(id: string, tree: TreeNode[]): TreeNode | null {
+    for (const n of tree) {
+      if (n.id === id) return n
+      if (n.children) {
+        const found = findNode(id, n.children)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  async function handleBulkTrash() {
+    // Separate folders and notes
+    const folders: string[] = []
+    const noteIds: string[] = []
+    for (const id of selectedIds) {
+      const node = findNode(id, nodes)
+      if (!node) continue
+      if (node.type === "folder") folders.push(id)
+      else noteIds.push(id)
+    }
+
+    const totalCount = folders.length + noteIds.length
+    const description =
+      folders.length > 0 && noteIds.length > 0
+        ? `Move ${noteIds.length} note${noteIds.length !== 1 ? "s" : ""} to trash and delete ${folders.length} folder${folders.length !== 1 ? "s" : ""}?`
+        : folders.length > 0
+          ? `Delete ${folders.length} folder${folders.length !== 1 ? "s" : ""} and all their contents?`
+          : `Move ${noteIds.length} note${noteIds.length !== 1 ? "s" : ""} to trash?`
+
+    const confirmed = await confirmDialog({
+      title: `Delete ${totalCount} item${totalCount !== 1 ? "s" : ""}`,
+      description,
+      confirmLabel: "Delete",
+      destructive: true,
+    })
+    if (!confirmed) return
+
+    // Delete folders first, then notes
+    const promises: Promise<Response>[] = []
+    for (const id of folders) {
+      promises.push(fetch(`/api/folders/${id}`, { method: "DELETE" }))
+      // Close tabs for notes inside deleted folders
+      const folderNode = findNode(id, nodes)
+      if (folderNode) {
+        const descendantIds = collectDescendantIds(folderNode)
+        for (const did of descendantIds) closeTab(did)
+      }
+    }
+    for (const id of noteIds) {
+      promises.push(fetch(`/api/notes/${id}`, { method: "DELETE" }))
+      closeTab(id)
+    }
+
+    await Promise.all(promises)
+    onClearSelection()
+    onRefresh()
+  }
+
+  async function handleBulkMove() {
+    const target = await promptDialog({
+      title: `Move ${selectedIds.size} items`,
+      description: "Enter folder name, or leave empty for root:",
+    })
+    if (target === null) return
+
+    let parentId: string | null = null
+    if (target.trim()) {
+      const res = await fetch("/api/folders")
+      const tree: TreeNode[] = await res.json()
+      const found = findFolderByName(tree, target.trim())
+      if (!found) {
+        alert(`Folder "${target}" not found`)
+        return
+      }
+      parentId = found.id
+    }
+
+    const promises: Promise<Response>[] = []
+    for (const id of selectedIds) {
+      const node = findNode(id, nodes)
+      if (!node) continue
+      const endpoint =
+        node.type === "folder" ? `/api/folders/${id}` : `/api/notes/${id}`
+      promises.push(
+        fetch(endpoint, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "move", parentId }),
+        })
+      )
+    }
+
+    await Promise.all(promises)
+    onClearSelection()
+    onRefresh()
+  }
+
+  return (
+    <div className="flex items-center gap-1 border-b border-border/60 bg-primary/5 px-2 py-1.5">
+      <button
+        onClick={onClearSelection}
+        className="flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+        title="Clear selection"
+      >
+        <XIcon className="size-3.5" />
+      </button>
+      <span className="flex-1 text-xs font-medium text-foreground">
+        {selectedIds.size} selected
+      </span>
+      <button
+        onClick={handleBulkMove}
+        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+        title="Move selected items"
+      >
+        <FolderInputIcon className="size-3.5" />
+      </button>
+      <button
+        onClick={handleBulkTrash}
+        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-destructive transition-colors hover:bg-destructive/10"
+        title="Delete selected items"
+      >
+        <TrashIcon className="size-3.5" />
+      </button>
+    </div>
+  )
+}
+
+// ── Bulk context menu (shown when right-clicking with multi-selection) ──
+
+function BulkContextMenu({
+  selectedIds,
+  onRefresh,
+}: {
+  selectedIds: Set<string>
+  onRefresh: () => void
+  nodes: TreeNode[]
+}) {
+  const { closeTab } = useTabStore()
+  const { clearSelection } = React.useContext(MultiSelectContext)
+
+  async function handleBulkTrash() {
+    const confirmed = await confirmDialog({
+      title: `Delete ${selectedIds.size} items`,
+      description: `Move ${selectedIds.size} item${selectedIds.size !== 1 ? "s" : ""} to trash?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    })
+    if (!confirmed) return
+
+    const promises: Promise<Response>[] = []
+    for (const id of selectedIds) {
+      // Try as note first (folders would need different handling in a full impl)
+      promises.push(fetch(`/api/notes/${id}`, { method: "DELETE" }))
+      closeTab(id)
+    }
+    await Promise.all(promises)
+    clearSelection()
+    onRefresh()
+  }
+
+  async function handleBulkMove() {
+    const target = await promptDialog({
+      title: `Move ${selectedIds.size} items`,
+      description: "Enter folder name, or leave empty for root:",
+    })
+    if (target === null) return
+
+    let parentId: string | null = null
+    if (target.trim()) {
+      const res = await fetch("/api/folders")
+      const tree: TreeNode[] = await res.json()
+      const found = findFolderByName(tree, target.trim())
+      if (!found) {
+        alert(`Folder "${target}" not found`)
+        return
+      }
+      parentId = found.id
+    }
+
+    const promises: Promise<Response>[] = []
+    for (const id of selectedIds) {
+      promises.push(
+        fetch(`/api/notes/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "move", parentId }),
+        })
+      )
+    }
+    await Promise.all(promises)
+    clearSelection()
+    onRefresh()
+  }
+
+  return (
+    <>
+      <ContextMenuItem disabled className="text-xs font-medium text-muted-foreground">
+        {selectedIds.size} items selected
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem onClick={handleBulkMove}>
+        <FolderInputIcon className="mr-2 size-4" />
+        Move to...
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem onClick={handleBulkTrash} variant="destructive">
+        <TrashIcon className="mr-2 size-4" />
+        Delete
+      </ContextMenuItem>
+    </>
   )
 }
 

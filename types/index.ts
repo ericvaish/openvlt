@@ -477,3 +477,21 @@ export interface SyncedBlockRef {
   syncedBlockId: string
   noteId: string
 }
+
+// ── Two-Factor Authentication ──
+
+export interface TwoFactorStatus {
+  enabled: boolean
+  methods: string[]
+  hasTotp: boolean
+  hasWebauthn: boolean
+  recoveryCodesRemaining: number
+}
+
+export interface LoginResponse {
+  user?: User
+  requires2FA?: boolean
+  pendingToken?: string
+  methods?: string[]
+  error?: string
+}

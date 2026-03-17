@@ -1,8 +1,10 @@
+"use client"
+
+import { useState } from "react"
 import {
   Terminal,
   Container,
   Server,
-  Copy,
   FolderTree,
   Database,
   Shield,
@@ -10,20 +12,199 @@ import {
   HardDrive,
   ArrowLeft,
   ExternalLink,
+  Copy,
+  Check,
+  Zap,
+  Info,
 } from "lucide-react"
 import Link from "next/link"
 
+const aiCopyText = `# openvlt Self-Hosting Guide
+
+openvlt is a self-hosted, open-source notes app. Notes are stored as plain markdown files on disk, with SQLite for metadata and search. It supports multi-user setups, E2E encrypted locked notes, and runs as a Next.js application.
+
+## Requirements
+- Node.js 22+ (or 20+ minimum)
+- bun (package manager)
+- pm2 (for process management, installed automatically)
+
+## Quick Install (macOS / Linux)
+curl -fsSL https://openvlt.com/install.sh | bash
+
+This installs Node.js, bun, and pm2 if needed, clones the repo to ~/.openvlt/app/, builds the app, starts the server on port 3456, and sets up the "openvlt" CLI command.
+
+## Docker Install (recommended for servers)
+git clone https://github.com/ericvaish/openvlt.git
+cd openvlt
+docker compose up -d
+
+docker-compose.yml:
+services:
+  openvlt:
+    build: .
+    container_name: openvlt
+    restart: unless-stopped
+    ports:
+      - "\${OPENVLT_PORT:-3456}:3456"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3456
+      - OPENVLT_DB_PATH=/app/data/.openvlt/openvlt.db
+
+The ./data volume is critical. It contains vault files and the database.
+
+Docker image uses node:22-alpine, runs as non-root user (UID 1001).
+
+## Manual Install
+git clone https://github.com/ericvaish/openvlt.git
+cd openvlt
+bun install
+bun run build
+bun run start
+
+Default port: 3456. Set PORT env var to change.
+
+For production with pm2:
+bun add -g pm2
+PORT=3456 pm2 start node -- .next/standalone/server.js
+pm2 save
+
+## CLI Commands (after quick install)
+openvlt start              # Start the server (default port 3456)
+openvlt start 8080         # Start on a custom port
+openvlt stop               # Stop the server
+openvlt restart            # Restart the server
+openvlt status             # Show status and check for updates
+openvlt update             # Pull latest version, rebuild, restart
+openvlt logs               # Show recent logs
+openvlt logs -f            # Follow logs in real-time
+openvlt uninstall          # Remove openvlt (keeps your data)
+
+## Environment Variables
+PORT=3456                          # Server listening port
+HOSTNAME=0.0.0.0                   # Bind address
+OPENVLT_DB_PATH=data/.openvlt/openvlt.db  # SQLite database path
+WEBAUTHN_ORIGIN=http://localhost:3456     # WebAuthn origin (set to your domain for production)
+WEBAUTHN_RP_ID=localhost                  # WebAuthn relying party ID (your domain)
+NODE_ENV=production                       # Set for deployments
+
+For WebAuthn (biometric login) in production, set WEBAUTHN_ORIGIN to your full URL (e.g. https://notes.example.com) and WEBAUTHN_RP_ID to your domain (e.g. notes.example.com).
+
+## Directory Structure
+data/
+  vault/{userId}/          # Each user gets an isolated directory
+    notes/                 # Plain markdown files
+    attachments/           # Uploaded files
+  .openvlt/
+    openvlt.db             # SQLite metadata and search index
+
+The markdown files on disk are always the source of truth. SQLite only stores metadata, search indexes, and sync state.
+
+## Reverse Proxy (production)
+
+Caddy (automatic HTTPS):
+notes.example.com {
+    reverse_proxy localhost:3456
+}
+
+nginx:
+server {
+    listen 443 ssl http2;
+    server_name notes.example.com;
+    ssl_certificate     /etc/letsencrypt/live/notes.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/notes.example.com/privkey.pem;
+    location / {
+        proxy_pass http://127.0.0.1:3456;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+
+Set WEBAUTHN_ORIGIN and WEBAUTHN_RP_ID to match your domain.
+
+## Backups
+rsync -av data/ /path/to/backup/
+
+Or just the essentials:
+cp data/.openvlt/openvlt.db /path/to/backup/
+rsync -av data/vault/ /path/to/backup/vault/
+
+Notes are plain markdown files, so any file sync tool (git, Syncthing, etc.) works.
+
+## Updating
+Quick install: openvlt update
+Docker: git pull && docker compose up -d --build
+Manual: git pull && bun install && bun run build && bun run start
+
+Database migrations run automatically on startup.
+
+## Security
+- User isolation: each user scoped to data/vault/{userId}/
+- Passwords hashed with bcrypt (12 rounds)
+- WebAuthn for biometric login (Touch ID, Face ID, Windows Hello)
+- 24-word recovery key generated at registration
+- Locked notes: AES-256-GCM, PBKDF2 key derivation (100,000 iterations), encryption happens in browser
+- Sessions: httpOnly cookies with signed tokens
+- Docker: runs as non-root user (UID 1001)
+
+## Tech Stack
+Next.js 16 (App Router), React 19, SQLite (WAL + FTS5), TipTap editor, bun, Tailwind CSS v4
+
+GitHub: https://github.com/ericvaish/openvlt
+`
+
 function CodeBlock({ children, title }: { children: string; title?: string }) {
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    navigator.clipboard.writeText(children)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10">
+    <div className="group overflow-hidden rounded-xl border border-white/10">
       {title && (
-        <div className="border-b border-white/5 bg-white/[0.03] px-4 py-2.5">
+        <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.03] px-4 py-2.5">
           <span className="font-mono text-xs text-stone-500">{title}</span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 font-mono text-xs text-stone-600 transition-colors hover:text-stone-300"
+          >
+            {copied ? (
+              <Check className="size-3" />
+            ) : (
+              <Copy className="size-3" />
+            )}
+            {copied ? "Copied" : "Copy"}
+          </button>
         </div>
       )}
-      <pre className="overflow-x-auto bg-black/30 p-4 font-mono text-sm leading-relaxed text-stone-300">
-        {children}
-      </pre>
+      <div className="relative">
+        <pre className="overflow-x-auto bg-black/30 p-4 font-mono text-sm leading-relaxed text-stone-300">
+          {children}
+        </pre>
+        {!title && (
+          <button
+            onClick={handleCopy}
+            className="absolute top-3 right-3 flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 font-mono text-xs text-stone-600 opacity-0 transition-all hover:text-stone-300 group-hover:opacity-100"
+          >
+            {copied ? (
+              <Check className="size-3" />
+            ) : (
+              <Copy className="size-3" />
+            )}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -33,11 +214,13 @@ function Section({
   icon: Icon,
   title,
   children,
+  badge,
 }: {
   id: string
   icon: React.ElementType
   title: string
   children: React.ReactNode
+  badge?: string
 }) {
   return (
     <section id={id} className="scroll-mt-24">
@@ -46,11 +229,61 @@ function Section({
           <Icon className="size-4.5 text-stone-400" />
         </div>
         <h2 className="text-xl font-bold">{title}</h2>
+        {badge && (
+          <span className="rounded-full bg-white/5 px-2.5 py-0.5 font-mono text-xs text-stone-500">
+            {badge}
+          </span>
+        )}
       </div>
       <div className="space-y-4 text-sm leading-relaxed text-stone-400">
         {children}
       </div>
     </section>
+  )
+}
+
+function Callout({
+  children,
+  type = "info",
+}: {
+  children: React.ReactNode
+  type?: "info" | "tip" | "important"
+}) {
+  const styles = {
+    info: "border-white/5 bg-white/[0.02]",
+    tip: "border-emerald-500/10 bg-emerald-500/[0.03]",
+    important: "border-amber-500/10 bg-amber-500/[0.03]",
+  }
+  const icons = {
+    info: <Info className="mt-0.5 size-3.5 shrink-0 text-stone-500" />,
+    tip: <Zap className="mt-0.5 size-3.5 shrink-0 text-emerald-500/70" />,
+    important: <Info className="mt-0.5 size-3.5 shrink-0 text-amber-500/70" />,
+  }
+
+  return (
+    <div
+      className={`flex gap-2.5 rounded-xl border p-4 text-sm leading-relaxed text-stone-400 ${styles[type]}`}
+    >
+      {icons[type]}
+      <div>{children}</div>
+    </div>
+  )
+}
+
+function Step({
+  number,
+  children,
+}: {
+  number: number
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex gap-4">
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 font-mono text-xs text-stone-500">
+        {number}
+      </div>
+      <div className="min-w-0 flex-1 pt-0.5">{children}</div>
+    </div>
   )
 }
 
@@ -69,6 +302,14 @@ const navItems = [
 ]
 
 export default function GetStarted() {
+  const [aiCopied, setAiCopied] = useState(false)
+
+  function handleAiCopy() {
+    navigator.clipboard.writeText(aiCopyText)
+    setAiCopied(true)
+    setTimeout(() => setAiCopied(false), 3000)
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Nav */}
@@ -123,62 +364,117 @@ export default function GetStarted() {
             <h1 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl">
               Self-Host openvlt
             </h1>
-            <p className="max-w-xl text-lg leading-relaxed text-stone-400">
+            <p className="mb-6 max-w-xl text-lg leading-relaxed text-stone-400">
               Get openvlt running on your own hardware in minutes. Your notes
-              stay on your machine as plain markdown files — no cloud, no third
+              stay on your machine as plain markdown files. No cloud, no third
               parties, no subscriptions.
             </p>
+
+            {/* Copy for AI button */}
+            <button
+              onClick={handleAiCopy}
+              className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm transition-all hover:border-white/20 hover:bg-white/[0.05]"
+            >
+              <div className="flex size-7 items-center justify-center rounded-lg bg-white/5">
+                {aiCopied ? (
+                  <Check className="size-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="size-3.5 text-stone-400" />
+                )}
+              </div>
+              <div className="text-left">
+                <p className="font-medium text-stone-300">
+                  {aiCopied
+                    ? "Copied to clipboard"
+                    : "Copy install guide as text"}
+                </p>
+                <p className="text-xs text-stone-600">
+                  {aiCopied
+                    ? "Paste it into your AI assistant"
+                    : "Paste into ChatGPT, Claude, or any AI assistant"}
+                </p>
+              </div>
+            </button>
+          </div>
+
+          {/* Quick facts */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              ["Stack", "Next.js 16"],
+              ["Database", "SQLite"],
+              ["Port", "3456"],
+              ["Storage", ".md files"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-center"
+              >
+                <p className="font-mono text-xs text-stone-600">{label}</p>
+                <p className="mt-1 text-sm font-medium text-stone-300">
+                  {value}
+                </p>
+              </div>
+            ))}
           </div>
 
           {/* Quick Install */}
           <Section id="quick-install" icon={Terminal} title="Quick Install">
             <p>
-              The fastest way to get started. Works on macOS and Linux. This
-              script installs all dependencies, builds the app, and starts the
-              server.
+              The fastest way to get started. Works on macOS and Linux. One
+              command installs everything and starts the server.
             </p>
 
             <CodeBlock title="terminal">
               {`curl -fsSL https://openvlt.com/install.sh | bash`}
             </CodeBlock>
 
-            <p>The install script will:</p>
-            <ul className="list-inside list-disc space-y-1 pl-1">
-              <li>Install Node.js 20+ and bun (if not present)</li>
-              <li>
-                Clone the repository to{" "}
-                <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
-                  ~/.openvlt/app/
-                </code>
-              </li>
-              <li>Build the application</li>
-              <li>
-                Start the server on port{" "}
-                <strong className="text-stone-300">3456</strong> via pm2
-              </li>
-              <li>
-                Set up the{" "}
-                <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
-                  openvlt
-                </code>{" "}
-                CLI command
-              </li>
-            </ul>
+            <div className="space-y-3 pt-2">
+              <p className="text-sm font-medium text-stone-300">
+                What the script does:
+              </p>
+              <div className="space-y-2.5">
+                <Step number={1}>
+                  <p>
+                    Installs Node.js 22+ and bun if not already present
+                  </p>
+                </Step>
+                <Step number={2}>
+                  <p>
+                    Clones the repo to{" "}
+                    <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
+                      ~/.openvlt/app/
+                    </code>{" "}
+                    and builds the application
+                  </p>
+                </Step>
+                <Step number={3}>
+                  <p>
+                    Starts the server on port{" "}
+                    <strong className="text-stone-300">3456</strong> via pm2
+                    and sets up the{" "}
+                    <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
+                      openvlt
+                    </code>{" "}
+                    CLI command
+                  </p>
+                </Step>
+              </div>
+            </div>
 
-            <p>
+            <Callout type="tip">
               Once complete, open{" "}
               <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                 http://localhost:3456
               </code>{" "}
               to create your account.
-            </p>
+            </Callout>
           </Section>
 
           {/* Docker */}
-          <Section id="docker" icon={Container} title="Docker">
+          <Section id="docker" icon={Container} title="Docker" badge="recommended for servers">
             <p>
-              Recommended for VPS and server deployments. The Docker image uses
-              a multi-stage build with{" "}
+              Best for VPS and server deployments. The image uses a multi-stage
+              build with{" "}
               <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                 node:22-alpine
               </code>{" "}
@@ -189,13 +485,16 @@ export default function GetStarted() {
               {`services:
   openvlt:
     build: .
+    container_name: openvlt
+    restart: unless-stopped
     ports:
       - "\${OPENVLT_PORT:-3456}:3456"
     volumes:
       - ./data:/app/data
     environment:
       - NODE_ENV=production
-    restart: unless-stopped`}
+      - PORT=3456
+      - OPENVLT_DB_PATH=/app/data/.openvlt/openvlt.db`}
             </CodeBlock>
 
             <CodeBlock title="terminal">
@@ -209,20 +508,20 @@ docker build -t openvlt .
 docker run -d -p 3456:3456 -v openvlt_data:/app/data openvlt`}
             </CodeBlock>
 
-            <p>
+            <Callout type="important">
               The{" "}
               <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                 ./data
               </code>{" "}
-              volume is critical — it contains your vault files and database.
-              Mount it to persist data across container restarts.
-            </p>
+              volume is critical. It contains your vault files and database.
+              Always mount it to persist data across container restarts.
+            </Callout>
           </Section>
 
           {/* Manual */}
           <Section id="manual" icon={Server} title="Manual Setup">
             <p>
-              For full control over the setup. Requires Node.js 20+ and bun.
+              For full control over the setup. Requires Node.js 22+ and bun.
             </p>
 
             <CodeBlock title="terminal">
@@ -238,8 +537,8 @@ bun run start`}
               <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                 PORT
               </code>{" "}
-              environment variable to change it. For production, use a process
-              manager like pm2 to handle restarts.
+              environment variable to change it. For production, use pm2 to
+              handle restarts.
             </p>
 
             <CodeBlock title="terminal (pm2)">
@@ -278,8 +577,8 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
           {/* Configuration */}
           <Section id="configuration" icon={Settings} title="Configuration">
             <p>
-              openvlt is configured via environment variables. All settings have
-              sensible defaults — no configuration file is required.
+              Configured via environment variables. All settings have sensible
+              defaults. No configuration file is required.
             </p>
 
             <div className="overflow-x-auto">
@@ -334,7 +633,7 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
               </table>
             </div>
 
-            <p>
+            <Callout type="info">
               For WebAuthn (biometric login) to work in production, set{" "}
               <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                 WEBAUTHN_ORIGIN
@@ -352,7 +651,7 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
                 notes.example.com
               </code>
               ).
-            </p>
+            </Callout>
           </Section>
 
           {/* Directory Structure */}
@@ -366,8 +665,8 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
               <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                 data/
               </code>{" "}
-              directory. Notes are plain markdown files — you can browse, edit,
-              and back them up with standard tools.
+              directory. Notes are plain markdown files. You can browse, edit,
+              and back them up with any standard tools.
             </p>
 
             <CodeBlock>
@@ -383,46 +682,43 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
     └── openvlt.db           # SQLite metadata & search index`}
             </CodeBlock>
 
-            <p>
-              <strong className="text-stone-300">Important:</strong> The
-              markdown files on disk are always the source of truth. SQLite
-              stores metadata, search indexes, and sync state only — never note
-              content.
-            </p>
+            <Callout type="important">
+              The markdown files on disk are always the source of truth.
+              SQLite stores metadata, search indexes, and sync state only.
+              Never note content.
+            </Callout>
           </Section>
 
           {/* Database */}
           <Section id="database" icon={Database} title="Database">
             <p>
               openvlt uses SQLite in WAL mode with FTS5 for full-text search.
-              The database is created and migrated automatically on first start
-              — no manual setup required.
+              The database is created and migrated automatically on first
+              start. No manual setup required.
             </p>
 
-            <ul className="list-inside list-disc space-y-1 pl-1">
-              <li>Schema is created automatically on first run</li>
-              <li>Migrations run automatically on startup</li>
-              <li>
-                Default location:{" "}
-                <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
-                  data/.openvlt/openvlt.db
-                </code>
-              </li>
-              <li>
-                Override with{" "}
-                <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
-                  OPENVLT_DB_PATH
-                </code>{" "}
-                env variable
-              </li>
-            </ul>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                ["Auto-created", "Schema is created on first run"],
+                ["Auto-migrated", "Migrations run on every startup"],
+                ["Default path", "data/.openvlt/openvlt.db"],
+                ["Override", "OPENVLT_DB_PATH env variable"],
+              ].map(([title, desc]) => (
+                <div
+                  key={title}
+                  className="rounded-xl border border-white/5 bg-white/[0.02] p-3"
+                >
+                  <p className="text-sm font-medium text-stone-300">{title}</p>
+                  <p className="mt-0.5 text-xs text-stone-500">{desc}</p>
+                </div>
+              ))}
+            </div>
           </Section>
 
           {/* Security */}
           <Section id="security" icon={Shield} title="Security">
             <p>
-              openvlt is designed for self-hosting with strong security
-              defaults.
+              Designed for self-hosting with strong security defaults.
             </p>
 
             <div className="space-y-3">
@@ -435,7 +731,7 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
                   <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                     data/vault/{"{userId}"}/
                   </code>
-                  . The service layer enforces directory boundaries — users
+                  . The service layer enforces directory boundaries. Users
                   cannot access each other&apos;s files through the API.
                 </p>
               </div>
@@ -445,10 +741,10 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
                   Authentication
                 </p>
                 <p>
-                  Passwords hashed with bcrypt. Optional WebAuthn for biometric
-                  login (Touch ID, Face ID, Windows Hello). 24-word recovery key
-                  generated at registration. Sessions stored as httpOnly cookies
-                  with signed tokens.
+                  Passwords hashed with bcrypt (12 rounds). Optional WebAuthn
+                  for biometric login (Touch ID, Face ID, Windows Hello).
+                  24-word recovery key generated at registration. Sessions
+                  stored as httpOnly cookies with signed tokens.
                 </p>
               </div>
 
@@ -468,7 +764,7 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
                   Docker
                 </p>
                 <p>
-                  The Docker container runs as a non-root user (
+                  The container runs as a non-root user (
                   <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                     UID 1001
                   </code>
@@ -482,10 +778,9 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
           <Section id="reverse-proxy" icon={Server} title="Reverse Proxy">
             <p>
               For production, put openvlt behind a reverse proxy with HTTPS.
-              Here are example configurations.
             </p>
 
-            <CodeBlock title="Caddy (recommended — automatic HTTPS)">
+            <CodeBlock title="Caddy (recommended, automatic HTTPS)">
               {`notes.example.com {
     reverse_proxy localhost:3456
 }`}
@@ -514,8 +809,8 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
 }`}
             </CodeBlock>
 
-            <p>
-              Remember to set{" "}
+            <Callout type="info">
+              Set{" "}
               <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                 WEBAUTHN_ORIGIN
               </code>{" "}
@@ -524,14 +819,13 @@ openvlt uninstall          # Remove openvlt (keeps your data)`}
                 WEBAUTHN_RP_ID
               </code>{" "}
               to match your domain when using a reverse proxy.
-            </p>
+            </Callout>
           </Section>
 
           {/* Backups */}
           <Section id="backups" icon={HardDrive} title="Backups">
             <p>
-              Since notes are plain files, backing up is straightforward. Back
-              up two things:
+              Since notes are plain files, backing up is straightforward.
             </p>
 
             <CodeBlock title="terminal">
@@ -543,41 +837,48 @@ cp data/.openvlt/openvlt.db /path/to/backup/
 rsync -av data/vault/ /path/to/backup/vault/`}
             </CodeBlock>
 
-            <p>
+            <Callout type="tip">
               You can also use git, Syncthing, or any file sync tool on the{" "}
               <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-xs text-stone-300">
                 data/vault/
               </code>{" "}
               directory since it&apos;s just markdown files.
-            </p>
+            </Callout>
           </Section>
 
           {/* Updating */}
           <Section id="updating" icon={Settings} title="Updating">
-            <p>If you used the quick install script:</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                <p className="mb-2 text-sm font-medium text-stone-300">
+                  Quick Install
+                </p>
+                <code className="font-mono text-xs text-stone-400">
+                  openvlt update
+                </code>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                <p className="mb-2 text-sm font-medium text-stone-300">
+                  Docker
+                </p>
+                <code className="font-mono text-xs text-stone-400">
+                  git pull && docker compose up -d --build
+                </code>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                <p className="mb-2 text-sm font-medium text-stone-300">
+                  Manual
+                </p>
+                <code className="font-mono text-xs text-stone-400">
+                  git pull && bun install && bun run build
+                </code>
+              </div>
+            </div>
 
-            <CodeBlock title="terminal">{`openvlt update`}</CodeBlock>
-
-            <p>For Docker:</p>
-
-            <CodeBlock title="terminal">
-              {`git pull
-docker compose up -d --build`}
-            </CodeBlock>
-
-            <p>For manual installs:</p>
-
-            <CodeBlock title="terminal">
-              {`git pull
-bun install
-bun run build
-bun run start  # or: pm2 restart openvlt`}
-            </CodeBlock>
-
-            <p>
-              Database migrations run automatically on startup — no manual
+            <Callout type="tip">
+              Database migrations run automatically on startup. No manual
               migration step needed.
-            </p>
+            </Callout>
           </Section>
 
           {/* Footer */}

@@ -9,7 +9,9 @@ export function initSchema(database: Database.Database) {
       password_hash TEXT NOT NULL,
       recovery_key_hash TEXT,
       active_vault_id TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      two_factor_enabled INTEGER NOT NULL DEFAULT 0,
+      two_factor_methods TEXT
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
@@ -307,6 +309,36 @@ export function initSchema(database: Database.Database) {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE SET NULL
     );
+
+    -- Two-factor authentication
+    CREATE TABLE IF NOT EXISTS user_totp (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      secret_enc TEXT NOT NULL,
+      verified INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS recovery_codes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_recovery_codes_user ON recovery_codes(user_id);
+
+    CREATE TABLE IF NOT EXISTS pending_2fa_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_pending_2fa_user ON pending_2fa_tokens(user_id);
 
     -- Synced blocks: content fragments shared across notes
     CREATE TABLE IF NOT EXISTS synced_blocks (

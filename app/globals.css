@@ -1180,3 +1180,11 @@
   min-height: 100px;
   font-family: var(--font-mono, monospace);
 }
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}

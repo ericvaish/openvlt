@@ -4,6 +4,11 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_MS,
 } from "@/lib/constants"
+import {
+  getUserTwoFactorStatus,
+  createPending2FAToken,
+  cleanupExpiredPendingTokens,
+} from "@/lib/auth/totp"
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,6 +40,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Clean up expired pending tokens opportunistically
+    cleanupExpiredPendingTokens()
+
+    // Check if 2FA is enabled
+    const twoFactor = getUserTwoFactorStatus(user.id)
+    if (twoFactor.enabled && twoFactor.methods.length > 0) {
+      const pendingToken = createPending2FAToken(user.id)
+      return NextResponse.json({
+        requires2FA: true,
+        pendingToken,
+        methods: twoFactor.methods,
+      })
+    }
+
+    // No 2FA — create session directly
     const session = createSession(user.id)
 
     const response = NextResponse.json({ user })

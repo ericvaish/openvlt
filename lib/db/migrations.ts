@@ -660,6 +660,56 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 14,
+    description: "Add two-factor authentication tables",
+    up: (db) => {
+      const hasColumn = (table: string, column: string) => {
+        const cols = db.pragma(`table_info(${table})`) as { name: string }[]
+        return cols.some((c) => c.name === column)
+      }
+
+      if (!hasColumn("users", "two_factor_enabled")) {
+        db.exec(
+          "ALTER TABLE users ADD COLUMN two_factor_enabled INTEGER NOT NULL DEFAULT 0"
+        )
+      }
+      if (!hasColumn("users", "two_factor_methods")) {
+        db.exec("ALTER TABLE users ADD COLUMN two_factor_methods TEXT")
+      }
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS user_totp (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL UNIQUE,
+          secret_enc TEXT NOT NULL,
+          verified INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS recovery_codes (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          code_hash TEXT NOT NULL,
+          used_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_recovery_codes_user ON recovery_codes(user_id);
+
+        CREATE TABLE IF NOT EXISTS pending_2fa_tokens (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          token TEXT NOT NULL UNIQUE,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_pending_2fa_user ON pending_2fa_tokens(user_id);
+      `)
+    },
+  },
 ]
 
 export function runMigrations(db: Database.Database) {
