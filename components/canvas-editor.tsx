@@ -19,6 +19,8 @@ import {
 import { HandwriteShapeUtil } from "@/lib/canvas/shapes/handwrite-shape"
 import { TextNoteTool } from "@/lib/canvas/tools/text-note-tool"
 import { HandwriteTool } from "@/lib/canvas/tools/handwrite-tool"
+import { LassoTool } from "@/lib/canvas/tools/lasso-tool"
+import { PixelEraserTool } from "@/lib/canvas/tools/pixel-eraser-tool"
 import { CanvasToolbarInline } from "@/components/canvas/canvas-toolbar-inline"
 import { CanvasBackground } from "@/components/canvas/canvas-background"
 import { InkLayer, type InkLayerHandle } from "@/components/canvas/ink-layer"
@@ -37,7 +39,7 @@ import {
 } from "@/lib/canvas/page-config"
 
 const customShapeUtils = [TextNoteShapeUtil, HandwriteShapeUtil]
-const customTools = [TextNoteTool, HandwriteTool]
+const customTools = [TextNoteTool, HandwriteTool, LassoTool, PixelEraserTool]
 
 const TEXT_NOTE_DEFAULTS_KEY = "openvlt:text-note-defaults"
 
@@ -203,6 +205,14 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         let lastTapX = 0
         let lastTapY = 0
 
+        // Inertial scrolling state
+        let velocityX = 0
+        let velocityY = 0
+        let lastMoveTime = 0
+        let lastMoveX = 0
+        let lastMoveY = 0
+        let inertiaRaf = 0
+
         // Track all active touch pointers for pinch detection
         const touchPointers = new Map<number, { x: number; y: number }>()
         let isPinching = false
@@ -228,10 +238,18 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
           const cam = editor.getCamera()
 
           if (activeTouchCount === 1) {
+            // Cancel any ongoing inertia
+            if (inertiaRaf) { cancelAnimationFrame(inertiaRaf); inertiaRaf = 0 }
+            velocityX = 0
+            velocityY = 0
+
             isTouchPanning = true
             isPinching = false
             touchStartX = pe.clientX
             touchStartY = pe.clientY
+            lastMoveX = pe.clientX
+            lastMoveY = pe.clientY
+            lastMoveTime = performance.now()
             cameraStartX = cam.x
             cameraStartY = cam.y
             addDebugRef.current(`PAN n=1 cam=${cam.x.toFixed(0)},${cam.y.toFixed(0)} z=${(cam.z??1).toFixed(2)}`)
@@ -267,6 +285,20 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
             const dy = (pe.clientY - touchStartY) / zoom
             editor.setCamera({ x: cameraStartX + dx, y: cameraStartY + dy, z: zoom })
             inkLayerRef.current?.redraw()
+
+            // Track velocity for inertia
+            const now = performance.now()
+            const dt = now - lastMoveTime
+            if (dt > 0 && dt < 100) {
+              const vx = (pe.clientX - lastMoveX) / dt
+              const vy = (pe.clientY - lastMoveY) / dt
+              // Smooth velocity with exponential moving average
+              velocityX = velocityX * 0.3 + vx * 0.7
+              velocityY = velocityY * 0.3 + vy * 0.7
+            }
+            lastMoveX = pe.clientX
+            lastMoveY = pe.clientY
+            lastMoveTime = now
           } else if (isPinching && touchPointers.size === 2) {
             const pts = [...touchPointers.values()]
             const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)
@@ -341,6 +373,44 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
 
           if (activeTouchCount === 0) {
             addDebugRef.current(`ALL UP cam=${cam.x.toFixed(0)},${cam.y.toFixed(0)} z=${(cam.z??1).toFixed(2)}`)
+
+            // Start inertial scrolling if finger was panning with enough velocity
+            const moved = Math.hypot(pe.clientX - touchStartX, pe.clientY - touchStartY)
+            const speed = Math.hypot(velocityX, velocityY)
+            if (isTouchPanning && moved > 10 && speed > 0.15) {
+              const friction = 0.95
+              const startVx = velocityX * 1000 // convert from px/ms to px/s
+              const startVy = velocityY * 1000
+              let vx = startVx
+              let vy = startVy
+              let lastT = performance.now()
+
+              const animate = () => {
+                const now = performance.now()
+                const dt = (now - lastT) / 1000
+                lastT = now
+
+                vx *= Math.pow(friction, dt * 60)
+                vy *= Math.pow(friction, dt * 60)
+
+                if (Math.abs(vx) < 5 && Math.abs(vy) < 5) {
+                  inertiaRaf = 0
+                  return
+                }
+
+                const zoom = editor.getZoomLevel()
+                const curCam = editor.getCamera()
+                editor.setCamera({
+                  x: curCam.x + (vx * dt) / zoom,
+                  y: curCam.y + (vy * dt) / zoom,
+                  z: zoom,
+                })
+                inkLayerRef.current?.redraw()
+                inertiaRaf = requestAnimationFrame(animate)
+              }
+              inertiaRaf = requestAnimationFrame(animate)
+            }
+
             isTouchPanning = false
             isPinching = false
           } else if (activeTouchCount === 1 && isPinching) {

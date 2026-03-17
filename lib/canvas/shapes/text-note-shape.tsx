@@ -224,6 +224,10 @@ export class TextNoteShapeUtil extends ShapeUtil<TextNoteShape> {
     return true
   }
 
+  override hideRotateHandle() {
+    return true
+  }
+
   override isAspectRatioLocked() {
     return false
   }

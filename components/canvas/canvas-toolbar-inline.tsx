@@ -18,6 +18,9 @@ import {
   ChevronUpIcon,
   GridIcon,
   PaletteIcon,
+  LassoIcon,
+  PlusIcon,
+  Trash2Icon,
 } from "lucide-react"
 import {
   PAGE_SIZES,
@@ -27,6 +30,15 @@ import {
   type BackgroundPattern,
   type RuleStyle,
 } from "@/lib/canvas/page-config"
+import {
+  getPenPresets,
+  savePenPresets,
+  getActivePenIndex,
+  setActivePenIndex,
+  COLOR_HEX,
+  STROKE_COLORS,
+  type PenPreset,
+} from "@/lib/canvas/pen-presets"
 import { GeoShapeGeoStyle } from "@tldraw/tlschema"
 
 const shapeTools = [
@@ -36,20 +48,6 @@ const shapeTools = [
   { id: "line", geo: null, icon: MinusIcon, label: "Line" },
   { id: "arrow", geo: null, icon: ArrowUpRightIcon, label: "Arrow" },
 ]
-
-const STROKE_COLORS = [
-  "black", "grey", "blue", "light-blue", "violet",
-  "light-violet", "red", "light-red", "orange", "yellow",
-  "green", "light-green", "white",
-] as const
-
-const COLOR_HEX: Record<string, string> = {
-  black: "#1d1d1d", grey: "#9fa8b2", "light-violet": "#e085f4",
-  violet: "#ae3ec9", blue: "#4465e9", "light-blue": "#4ba1f1",
-  yellow: "#f1ac4b", orange: "#e16919", green: "#099268",
-  "light-green": "#4cb05e", "light-red": "#f87777", red: "#e03131",
-  white: "#FFFFFF",
-}
 
 interface CanvasToolbarInlineProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,8 +86,17 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
   const [currentPageSize, setCurrentPageSize] = React.useState(initialPageSize)
   const [currentBackground, setCurrentBackground] = React.useState(initialBackground)
   const [activeGeo, setActiveGeo] = React.useState("rectangle")
+  const [activeEraser, setActiveEraser] = React.useState<"eraser" | "pixel-eraser">("eraser")
+  const [eraserMenuOpen, setEraserMenuOpen] = React.useState(false)
   const [collapsed, setCollapsed] = React.useState(false)
   const shapesRef = React.useRef<HTMLDivElement>(null)
+  const eraserRef = React.useRef<HTMLDivElement>(null)
+
+  // Pen presets
+  const [penPresets, setPenPresets] = React.useState<PenPreset[]>(() => getPenPresets())
+  const [activePenIdx, setActivePenIdx] = React.useState(() => getActivePenIndex())
+  const [penSettingsOpen, setPenSettingsOpen] = React.useState<number | null>(null)
+  const penSettingsRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     if (!editor) return
@@ -100,7 +107,7 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
   }, [editor])
 
   React.useEffect(() => {
-    if (!shapesOpen && !pageMenuOpen && !strokeMenuOpen) return
+    if (!shapesOpen && !pageMenuOpen && !strokeMenuOpen && !eraserMenuOpen && penSettingsOpen === null) return
     const handler = (e: MouseEvent) => {
       if (shapesOpen && shapesRef.current && !shapesRef.current.contains(e.target as Node)) {
         setShapesOpen(false)
@@ -111,15 +118,32 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
       if (strokeMenuOpen && strokeMenuRef.current && !strokeMenuRef.current.contains(e.target as Node)) {
         setStrokeMenuOpen(false)
       }
+      if (eraserMenuOpen && eraserRef.current && !eraserRef.current.contains(e.target as Node)) {
+        setEraserMenuOpen(false)
+      }
+      if (penSettingsOpen !== null && penSettingsRef.current && !penSettingsRef.current.contains(e.target as Node)) {
+        setPenSettingsOpen(null)
+      }
     }
     document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [shapesOpen, pageMenuOpen, strokeMenuOpen])
+    document.addEventListener("touchstart", handler as EventListener)
+    return () => {
+      document.removeEventListener("mousedown", handler)
+      document.removeEventListener("touchstart", handler as EventListener)
+    }
+  }, [shapesOpen, pageMenuOpen, strokeMenuOpen, eraserMenuOpen, penSettingsOpen])
 
   const [currentRuleStyle, setCurrentRuleStyle] = React.useState(ruleStyle)
   const [currentCustomSpacing, setCurrentCustomSpacing] = React.useState(customSpacing)
   const [currentPressure, setCurrentPressure] = React.useState(pressureSensitivity)
   const [currentDrawWithFinger, setCurrentDrawWithFinger] = React.useState(drawWithFinger)
+  const [currentSnapToShape, setCurrentSnapToShape] = React.useState(() => {
+    try {
+      const stored = localStorage.getItem("openvlt:canvas-settings")
+      if (stored) return JSON.parse(stored).snapToShape === true
+    } catch {}
+    return false
+  })
 
   if (!editor) return null
 
@@ -172,209 +196,218 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
       <button onClick={() => selectTool("hand")} className={btn(currentTool === "hand")} title="Hand (H)">
         <HandIcon className="size-3.5" />
       </button>
+      <button onClick={() => selectTool("lasso")} className={btn(currentTool === "lasso")} title="Lasso Select (L)">
+        <LassoIcon className="size-3.5" />
+      </button>
 
       <div className="mx-0.5 h-4 w-px bg-border" />
 
-      <button onClick={() => selectTool("handwrite")} className={btn(currentTool === "handwrite" || currentTool === "draw")} title="Pen (D)">
-        <PenToolIcon className="size-3.5" />
-      </button>
-      <button onClick={() => selectTool("eraser")} className={btn(currentTool === "eraser")} title="Eraser (E)">
-        <EraserIcon className="size-3.5" />
-      </button>
-
-      {/* Stroke style dropdown */}
-      <div ref={strokeMenuRef} className="relative">
-        <button
-          onClick={() => setStrokeMenuOpen(!strokeMenuOpen)}
-          className={btn(strokeMenuOpen)}
-          title="Stroke style"
-        >
-          <div className="flex items-center gap-0.5">
-            <div className="rounded-full" style={{
-              width: 10, height: 10,
-              background: COLOR_HEX[currentStrokeColor] || "#1d1d1d",
-              border: "1px solid #d1d5db",
-            }} />
-            <ChevronDownIcon className="size-2" />
-          </div>
-        </button>
-        {strokeMenuOpen && (
-          <div className="absolute left-0 top-full z-50 mt-1 flex flex-col gap-2 rounded-lg border bg-background p-3 shadow-md" style={{ minWidth: 200 }}>
-            <div>
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-medium uppercase text-muted-foreground">Size</span>
-                <span className="text-[10px] text-muted-foreground">{currentStrokeSize.toUpperCase()}</span>
+      {/* Pen presets */}
+      {penPresets.map((preset, idx) => (
+        <div key={preset.id} ref={penSettingsOpen === idx ? penSettingsRef : undefined} className="relative">
+          <button
+            onClick={() => {
+              setActivePenIdx(idx)
+              setActivePenIndex(idx)
+              savePenPresets(penPresets)
+              selectTool("handwrite")
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setPenSettingsOpen(penSettingsOpen === idx ? null : idx)
+            }}
+            onDoubleClick={() => {
+              setPenSettingsOpen(penSettingsOpen === idx ? null : idx)
+            }}
+            className={btn(activePenIdx === idx && (currentTool === "handwrite" || currentTool === "draw"))}
+            title={`${preset.type === "highlighter" ? "Highlighter" : "Pen"} — ${preset.color} ${preset.size.toUpperCase()} (double-click to edit)`}
+          >
+            {preset.type === "highlighter" ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={preset.color === "black" ? "currentColor" : (COLOR_HEX[preset.color] || "currentColor")} strokeWidth="2.5" strokeLinecap="round">
+                <path d="M4 18h8" />
+                <path d="M4 14h12" opacity="0.5" />
+              </svg>
+            ) : (
+              <PenToolIcon className="size-3.5" style={{ color: preset.color === "black" || preset.color === "white" ? undefined : (COLOR_HEX[preset.color] || undefined) }} />
+            )}
+          </button>
+          {penSettingsOpen === idx && (
+            <div className="absolute left-0 top-full z-50 mt-1 flex flex-col gap-2 rounded-lg border bg-background p-3 shadow-md" style={{ minWidth: 200 }}>
+              {/* Type toggle */}
+              <div>
+                <div className="mb-1 text-[10px] font-medium uppercase text-muted-foreground">Type</div>
+                <div className="flex gap-1">
+                  {(["pen", "highlighter"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        const updated = [...penPresets]
+                        updated[idx] = { ...updated[idx], type: t }
+                        setPenPresets(updated)
+                        savePenPresets(updated)
+                      }}
+                      className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                        preset.type === t
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+                      }`}
+                    >
+                      {t === "pen" ? "Pen" : "Highlighter"}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] text-muted-foreground">Thin</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={3}
-                  step={1}
-                  value={["s", "m", "l", "xl"].indexOf(currentStrokeSize)}
-                  onChange={(e) => {
-                    const sizes = ["s", "m", "l", "xl"] as const
-                    const s = sizes[parseInt(e.target.value)]
-                    setCurrentStrokeSize(s)
-                    onStrokeSizeChange(s)
-                  }}
-                  className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-                />
-                <span className="text-[9px] text-muted-foreground">Thick</span>
-              </div>
-              {/* Preview line */}
-              <div className="mt-1.5 flex items-center justify-center rounded bg-muted/50 py-2">
-                <div style={{
-                  width: 80,
-                  height: [1.5, 3, 5, 10][["s", "m", "l", "xl"].indexOf(currentStrokeSize)],
-                  borderRadius: 999,
-                  background: COLOR_HEX[currentStrokeColor] || "#1d1d1d",
-                }} />
-              </div>
-            </div>
-            <div>
-              <div className="mb-1 text-[10px] font-medium uppercase text-muted-foreground">Color</div>
-              <div className="flex flex-wrap gap-1">
-                {STROKE_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => { setCurrentStrokeColor(c); onStrokeColorChange(c) }}
-                    className="rounded-full"
-                    style={{
-                      width: 20, height: 20,
-                      background: COLOR_HEX[c],
-                      border: currentStrokeColor === c
-                        ? "2px solid var(--color-primary, #3b82f6)"
-                        : "1px solid #d1d5db",
-                      cursor: "pointer", padding: 0,
+              {/* Size */}
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">Size</span>
+                  <span className="text-[10px] text-muted-foreground">{preset.size.toUpperCase()}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-muted-foreground">Thin</span>
+                  <input
+                    type="range" min={0} max={3} step={1}
+                    value={["s", "m", "l", "xl"].indexOf(preset.size)}
+                    onChange={(e) => {
+                      const sizes = ["s", "m", "l", "xl"] as const
+                      const updated = [...penPresets]
+                      updated[idx] = { ...updated[idx], size: sizes[parseInt(e.target.value)] }
+                      setPenPresets(updated)
+                      savePenPresets(updated)
                     }}
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary"
                   />
-                ))}
+                  <span className="text-[9px] text-muted-foreground">Thick</span>
+                </div>
               </div>
-            </div>
-            {/* Pressure sensitivity toggle */}
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-medium uppercase text-muted-foreground">Pressure</span>
-              <button
-                onPointerDown={(e) => {
-                  e.stopPropagation()
-                  e.preventDefault()
-                  const next = !currentPressure
-                  setCurrentPressure(next)
-                  onPressureSensitivityChange(next)
-                  // Save immediately so handwrite tool picks it up
-                  try {
-                    const stored = localStorage.getItem("openvlt:canvas-settings")
-                    const settings = stored ? JSON.parse(stored) : {}
-                    settings.pressureSensitivity = next
-                    localStorage.setItem("openvlt:canvas-settings", JSON.stringify(settings))
-                  } catch {}
-                }}
-                style={{
-                  position: "relative",
-                  width: 36,
-                  height: 20,
-                  borderRadius: 10,
-                  border: "none",
-                  background: currentPressure ? "var(--color-primary, #3b82f6)" : "#71717a",
-                  cursor: "pointer",
-                  padding: 0,
-                  transition: "background 0.2s",
-                  flexShrink: 0,
-                }}
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    top: 2,
-                    left: currentPressure ? 18 : 2,
-                    width: 16,
-                    height: 16,
-                    borderRadius: 8,
-                    background: "white",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                    transition: "left 0.2s",
+              {/* Color */}
+              <div>
+                <div className="mb-1 text-[10px] font-medium uppercase text-muted-foreground">Color</div>
+                <div className="flex flex-wrap gap-1">
+                  {STROKE_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => {
+                        const updated = [...penPresets]
+                        updated[idx] = { ...updated[idx], color: c }
+                        setPenPresets(updated)
+                        savePenPresets(updated)
+                      }}
+                      className="rounded-full"
+                      style={{
+                        width: 20, height: 20,
+                        background: COLOR_HEX[c],
+                        border: preset.color === c
+                          ? "2px solid var(--color-primary, #3b82f6)"
+                          : "1px solid #d1d5db",
+                        cursor: "pointer", padding: 0,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              {/* Delete preset */}
+              {penPresets.length > 1 && (
+                <button
+                  onClick={() => {
+                    const updated = penPresets.filter((_, i) => i !== idx)
+                    setPenPresets(updated)
+                    savePenPresets(updated)
+                    if (activePenIdx >= updated.length) {
+                      setActivePenIdx(updated.length - 1)
+                      setActivePenIndex(updated.length - 1)
+                    }
+                    setPenSettingsOpen(null)
                   }}
-                />
-              </button>
+                  className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] text-destructive transition-colors hover:bg-accent"
+                >
+                  <Trash2Icon className="size-3" />
+                  Delete preset
+                </button>
+              )}
             </div>
-            {/* Draw with finger toggle */}
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-medium uppercase text-muted-foreground">Draw with finger</span>
-              <button
-                onPointerDown={(e) => {
-                  e.stopPropagation()
-                  e.preventDefault()
-                  const next = !currentDrawWithFinger
-                  setCurrentDrawWithFinger(next)
-                  onDrawWithFingerChange(next)
-                }}
-                style={{
-                  position: "relative",
-                  width: 36,
-                  height: 20,
-                  borderRadius: 10,
-                  border: "none",
-                  background: currentDrawWithFinger ? "var(--color-primary, #3b82f6)" : "#71717a",
-                  cursor: "pointer",
-                  padding: 0,
-                  transition: "background 0.2s",
-                  flexShrink: 0,
-                }}
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    top: 2,
-                    left: currentDrawWithFinger ? 18 : 2,
-                    width: 16,
-                    height: 16,
-                    borderRadius: 8,
-                    background: "white",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                    transition: "left 0.2s",
-                  }}
-                />
-              </button>
-            </div>
+          )}
+        </div>
+      ))}
+      {/* Add new pen preset */}
+      <button
+        onClick={() => {
+          const newPreset: PenPreset = {
+            id: `pen-${Date.now()}`,
+            type: "pen",
+            color: "black",
+            size: "m",
+          }
+          const updated = [...penPresets, newPreset]
+          setPenPresets(updated)
+          savePenPresets(updated)
+          const newIdx = updated.length - 1
+          setActivePenIdx(newIdx)
+          setActivePenIndex(newIdx)
+          setPenSettingsOpen(newIdx)
+          selectTool("handwrite")
+        }}
+        className={btn(false)}
+        title="Add pen preset"
+      >
+        <PlusIcon className="size-3.5" />
+      </button>
+      {/* Eraser — single tap uses active eraser, double tap opens menu */}
+      <div ref={eraserRef} className="relative">
+        <button
+          onClick={() => selectTool(activeEraser)}
+          onDoubleClick={() => setEraserMenuOpen(!eraserMenuOpen)}
+          className={btn(currentTool === "eraser" || currentTool === "pixel-eraser")}
+          title={`${activeEraser === "eraser" ? "Stroke Eraser" : "Pixel Eraser"} (double-click to switch)`}
+        >
+          <EraserIcon className="size-3.5" />
+        </button>
+        <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center text-muted-foreground pointer-events-none">
+          <ChevronDownIcon className="size-2" />
+        </span>
+        {eraserMenuOpen && (
+          <div className="absolute left-0 top-full z-50 mt-1 flex flex-col gap-0.5 rounded-lg border bg-background p-1 shadow-md" style={{ minWidth: 140 }}>
             <button
-              onClick={() => {
-                localStorage.setItem("openvlt:stroke-defaults", JSON.stringify({
-                  color: currentStrokeColor, size: currentStrokeSize,
-                }))
-                setStrokeSaved(true)
-                setTimeout(() => setStrokeSaved(false), 1500)
-              }}
-              className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
-                strokeSaved
-                  ? "bg-green-500 text-white"
-                  : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => { setActiveEraser("eraser"); selectTool("eraser"); setEraserMenuOpen(false) }}
+              className={`flex items-center gap-2 rounded px-2 py-1.5 text-xs transition-colors ${
+                activeEraser === "eraser"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
               }`}
             >
-              {strokeSaved ? "Saved!" : "Set as default"}
+              <EraserIcon className="size-3.5" />
+              Stroke Eraser
+            </button>
+            <button
+              onClick={() => { setActiveEraser("pixel-eraser"); selectTool("pixel-eraser"); setEraserMenuOpen(false) }}
+              className={`flex items-center gap-2 rounded px-2 py-1.5 text-xs transition-colors ${
+                activeEraser === "pixel-eraser"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              <EraserIcon className="size-3.5" />
+              Pixel Eraser
             </button>
           </div>
         )}
       </div>
 
+
       <div className="mx-0.5 h-4 w-px bg-border" />
 
-      {/* Shapes */}
+      {/* Shapes — single tap opens menu */}
       <div ref={shapesRef} className="relative">
         <button
-          onClick={() => isGeoActive ? setShapesOpen(!shapesOpen) : selectTool(`geo-${activeGeo}`)}
+          onClick={() => setShapesOpen(!shapesOpen)}
           className={btn(isGeoActive)}
           title="Shapes"
         >
           <ActiveShapeIcon className="size-3.5" />
         </button>
-        <button
-          onClick={() => setShapesOpen(!shapesOpen)}
-          className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center text-muted-foreground"
-        >
+        <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center text-muted-foreground pointer-events-none">
           <ChevronDownIcon className="size-2" />
-        </button>
+        </span>
         {shapesOpen && (
           <div className="absolute left-0 top-full z-50 mt-1 flex gap-0.5 rounded-lg border bg-background p-1 shadow-md">
             {shapeTools.map((s) => (
@@ -505,6 +538,38 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
                 )}
               </div>
             )}
+            {/* Drawing settings */}
+            <div className="border-t pt-2 mt-1 flex flex-col gap-2">
+              {([
+                { label: "Pressure", value: currentPressure, onChange: (v: boolean) => {
+                  setCurrentPressure(v)
+                  onPressureSensitivityChange(v)
+                  try { const s = JSON.parse(localStorage.getItem("openvlt:canvas-settings") || "{}"); s.pressureSensitivity = v; localStorage.setItem("openvlt:canvas-settings", JSON.stringify(s)) } catch {}
+                }},
+                { label: "Draw with finger", value: currentDrawWithFinger, onChange: (v: boolean) => { setCurrentDrawWithFinger(v); onDrawWithFingerChange(v) }},
+                { label: "Snap to shape", value: currentSnapToShape, onChange: (v: boolean) => {
+                  setCurrentSnapToShape(v)
+                  try { const s = JSON.parse(localStorage.getItem("openvlt:canvas-settings") || "{}"); s.snapToShape = v; localStorage.setItem("openvlt:canvas-settings", JSON.stringify(s)) } catch {}
+                }},
+              ] as const).map(({ label, value, onChange }) => (
+                <div key={label} className="flex items-center justify-between">
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">{label}</span>
+                  <button
+                    onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onChange(!value) }}
+                    style={{
+                      position: "relative", width: 36, height: 20, borderRadius: 10, border: "none",
+                      background: value ? "var(--color-primary, #3b82f6)" : "#71717a",
+                      cursor: "pointer", padding: 0, transition: "background 0.2s", flexShrink: 0,
+                    }}
+                  >
+                    <span style={{
+                      position: "absolute", top: 2, left: value ? 18 : 2, width: 16, height: 16,
+                      borderRadius: 8, background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s",
+                    }} />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

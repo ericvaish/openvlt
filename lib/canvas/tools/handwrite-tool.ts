@@ -1,5 +1,6 @@
 import { StateNode, createShapeId } from "tldraw"
 import { DefaultColorStyle, DefaultSizeStyle } from "@tldraw/tlschema"
+import { recognizeShape } from "../shape-recognition"
 import "../shapes/handwrite-shape"
 
 export class HandwriteTool extends StateNode {
@@ -17,6 +18,8 @@ export class HandwriteTool extends StateNode {
   private ctx: CanvasRenderingContext2D | null = null
   private color = "#1d1d1d"
   private strokeWidth = 3
+  private opacity = 1
+  private penType: "pen" | "highlighter" = "pen"
   private lastScreenX = 0
   private lastScreenY = 0
   private prevScreenX = 0
@@ -41,10 +44,14 @@ export class HandwriteTool extends StateNode {
 
   override onEnter() {
     this.editor.setCursor({ type: "cross", rotation: 0 })
+    this.initWetInkCanvas()
+  }
 
-    // Create wet ink canvas overlay
+  private initWetInkCanvas() {
+    if (this.canvas) return
+
     const container = document.querySelector(".canvas-editor-wrapper .tl-container")
-    if (container && !this.canvas) {
+    if (container) {
       this.canvas = document.createElement("canvas")
       this.canvas.style.cssText =
         "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;"
@@ -57,6 +64,9 @@ export class HandwriteTool extends StateNode {
         this.ctx.scale(dpr, dpr)
       }
       container.appendChild(this.canvas)
+    } else {
+      // Container not ready yet — retry next frame
+      requestAnimationFrame(() => this.initWetInkCanvas())
     }
   }
 
@@ -66,6 +76,17 @@ export class HandwriteTool extends StateNode {
       this.canvas = null
       this.ctx = null
     }
+  }
+
+  private isSnapToShapeEnabled(): boolean {
+    try {
+      const stored = localStorage.getItem("openvlt:canvas-settings")
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        return parsed.snapToShape === true
+      }
+    } catch {}
+    return false
   }
 
   private isPressureEnabled(): boolean {
@@ -80,6 +101,9 @@ export class HandwriteTool extends StateNode {
   }
 
   override onPointerDown() {
+    // Ensure wet ink canvas exists (fallback if onEnter rAF hasn't fired yet)
+    if (!this.canvas) this.initWetInkCanvas()
+
     const { x, y, z } = this.editor.inputs.currentPagePoint
     const pressure = this.isPressureEnabled() ? (z ?? 0.5) : 0.5
     this.shapeId = createShapeId()
@@ -91,28 +115,36 @@ export class HandwriteTool extends StateNode {
     this.maxX = 0
     this.maxY = 0
 
-    // Get style
+    // Read from active pen preset
     let colorName = "black"
     let sizeName = "m"
+    let penType: "pen" | "highlighter" = "pen"
     try {
-      const stored = localStorage.getItem("openvlt:stroke-defaults")
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        colorName = parsed.color || "black"
-        sizeName = parsed.size || "m"
+      const presets = JSON.parse(localStorage.getItem("openvlt:pen-presets") || "[]")
+      const activeIdx = parseInt(localStorage.getItem("openvlt:active-pen") || "0") || 0
+      const preset = presets[activeIdx]
+      if (preset) {
+        colorName = preset.color || "black"
+        sizeName = preset.size || "m"
+        penType = preset.type || "pen"
       }
     } catch {}
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      // DefaultColorStyle, DefaultSizeStyle imported at top level
-      const c = this.editor.getStyleForNextShape(DefaultColorStyle)
-      const s = this.editor.getStyleForNextShape(DefaultSizeStyle)
-      if (c) colorName = c as string
-      if (s) sizeName = s as string
-    } catch {}
+    // Fallback to old stroke defaults if no presets
+    if (colorName === "black" && sizeName === "m") {
+      try {
+        const stored = localStorage.getItem("openvlt:stroke-defaults")
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          colorName = parsed.color || "black"
+          sizeName = parsed.size || "m"
+        }
+      } catch {}
+    }
 
     this.color = this.COLOR_MAP[colorName] || "#1d1d1d"
     this.strokeWidth = this.SIZE_MAP[sizeName] || 3
+    this.penType = penType
+    this.opacity = penType === "highlighter" ? 0.35 : 1
 
     // Clear previous wet ink and resize canvas
     if (this.canvas && this.ctx) {
@@ -166,8 +198,9 @@ export class HandwriteTool extends StateNode {
       const pw = pressureEnabled ? (0.3 + pressure * 1.2) : 1
       const w = Math.max(0.5, this.strokeWidth * pw * zoom)
 
+      this.ctx.globalAlpha = this.opacity
       this.ctx.strokeStyle = this.color
-      this.ctx.lineWidth = w
+      this.ctx.lineWidth = this.penType === "highlighter" ? Math.max(w, 12 * zoom) : w
       this.ctx.lineCap = "round"
       this.ctx.lineJoin = "round"
 
@@ -214,27 +247,105 @@ export class HandwriteTool extends StateNode {
       })
     })
 
-    // Get style names for the shape
+    // Read from active pen preset (same as onPointerDown)
     let colorName = "black"
     let sizeName = "m"
     try {
-      const stored = localStorage.getItem("openvlt:stroke-defaults")
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        colorName = parsed.color || "black"
-        sizeName = parsed.size || "m"
+      const presets = JSON.parse(localStorage.getItem("openvlt:pen-presets") || "[]")
+      const activeIdx = parseInt(localStorage.getItem("openvlt:active-pen") || "0") || 0
+      const preset = presets[activeIdx]
+      if (preset) {
+        colorName = preset.color || "black"
+        sizeName = preset.size || "m"
       }
     } catch {}
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      // DefaultColorStyle, DefaultSizeStyle imported at top level
-      const c = this.editor.getStyleForNextShape(DefaultColorStyle)
-      const s = this.editor.getStyleForNextShape(DefaultSizeStyle)
-      if (c) colorName = c as string
-      if (s) sizeName = s as string
-    } catch {}
+    if (colorName === "black" && sizeName === "m") {
+      try {
+        const stored = localStorage.getItem("openvlt:stroke-defaults")
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          colorName = parsed.color || "black"
+          sizeName = parsed.size || "m"
+        }
+      } catch {}
+    }
 
-    // Create the final shape
+    // Try shape recognition if snap-to-shape is enabled (not for highlighter)
+    if (this.isSnapToShapeEnabled() && this.penType !== "highlighter" && this.points.length >= 5) {
+      const absPoints = this.points.map(p => ({ x: p.x + this.originX, y: p.y + this.originY }))
+      const recognized = recognizeShape(absPoints)
+
+      if (recognized) {
+        // Apply active pen color to the recognized shape
+        try {
+          this.editor.setStyleForNextShapes(DefaultColorStyle, colorName)
+        } catch {}
+        const { type, bounds } = recognized
+
+        if (type === "line") {
+          const first = absPoints[0]
+          const last = absPoints[absPoints.length - 1]
+          this.editor.createShape({
+            id: this.shapeId,
+            type: "arrow",
+            x: first.x,
+            y: first.y,
+            props: {
+              start: { x: 0, y: 0 },
+              end: { x: last.x - first.x, y: last.y - first.y },
+              arrowheadStart: "none",
+              arrowheadEnd: "none",
+            },
+          } as Parameters<typeof this.editor.createShape>[0])
+        } else if (type === "arrow") {
+          const start = recognized.arrowStart ?? absPoints[0]
+          const end = recognized.arrowEnd ?? absPoints[absPoints.length - 1]
+          this.editor.createShape({
+            id: this.shapeId,
+            type: "arrow",
+            x: start.x,
+            y: start.y,
+            props: {
+              start: { x: 0, y: 0 },
+              end: { x: end.x - start.x, y: end.y - start.y },
+              arrowheadStart: "none",
+              arrowheadEnd: "arrow",
+            },
+          } as Parameters<typeof this.editor.createShape>[0])
+        } else {
+          const geoMap: Record<string, string> = {
+            rectangle: "rectangle",
+            ellipse: "ellipse",
+            triangle: "triangle",
+            diamond: "diamond",
+            pentagon: "pentagon",
+            hexagon: "hexagon",
+          }
+          const geo = geoMap[type] ?? "rectangle"
+          try {
+            const { GeoShapeGeoStyle } = require("@tldraw/tlschema")
+            this.editor.setStyleForNextShapes(GeoShapeGeoStyle, geo)
+          } catch {}
+          this.editor.createShape({
+            id: this.shapeId,
+            type: "geo",
+            x: bounds.x,
+            y: bounds.y,
+            props: {
+              w: Math.max(20, bounds.w),
+              h: Math.max(20, bounds.h),
+              geo,
+            },
+          } as Parameters<typeof this.editor.createShape>[0])
+        }
+
+        this.shapeId = "" as ReturnType<typeof createShapeId>
+        this.points = []
+        return
+      }
+    }
+
+    // Create the final handwrite shape (no recognition match)
     this.editor.createShape({
       id: this.shapeId,
       type: "handwrite",
@@ -246,6 +357,7 @@ export class HandwriteTool extends StateNode {
         color: colorName,
         size: sizeName,
         points: JSON.stringify(this.points),
+        penType: this.penType,
         isComplete: true,
       },
     })

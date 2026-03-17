@@ -331,8 +331,8 @@ export function NoteHeader({ note, isSplit = false, pane = "main", toolbarSlot }
         )}
       </header>
 
-      {/* Mobile: two-row header */}
-      <div className="shrink-0 border-b md:hidden">
+      {/* Mobile: two-row header (hidden entirely for canvas notes which use the desktop header) */}
+      <div className={`shrink-0 border-b md:hidden ${toolbarSlot ? "hidden" : ""}`}>
         {/* Row 1: icon + title + timestamp */}
         <div className="flex h-10 items-center gap-2 px-3">
           <IconPicker value={icon} onChange={handleIconChange}>
@@ -363,8 +363,8 @@ export function NoteHeader({ note, isSplit = false, pane = "main", toolbarSlot }
           </span>
         </div>
 
-        {/* Row 2: action buttons, horizontally scrollable */}
-        <div className="flex h-9 items-center gap-0.5 overflow-x-auto px-3 scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Row 2: action buttons, horizontally scrollable (hidden for canvas notes which use the 3-dot menu) */}
+        <div className={`flex h-9 items-center gap-0.5 overflow-x-auto px-3 scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${toolbarSlot ? "hidden" : ""}`}>
           {!coverImage && (
             <Button
               variant="ghost"
