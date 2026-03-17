@@ -313,7 +313,9 @@ export function TabContainer() {
                 />
                 <div className="text-center">
                   <h2 className="text-lg font-medium">
-                    {greeting}{userName ? `, ${userName}` : ""}
+                    {userName
+                      ? `${greeting.replace(/\?$/, "")}, ${userName}${greeting.endsWith("?") ? "?" : ""}`
+                      : greeting}
                   </h2>
                   <p className="mt-1 text-sm italic text-muted-foreground">
                     &ldquo;{quote}&rdquo;

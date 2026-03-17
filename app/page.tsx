@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
-import { ArrowRight } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { ArrowRight, UserPlus } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 
 // ── Interactive particle field ──────────────────────────────────────
 function ParticleField() {
@@ -150,7 +151,7 @@ function ScrambleText({
 }
 
 // ════════════════════════════════════════════════════════════════════
-export default function LandingPage() {
+export default function WelcomePage() {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -162,34 +163,41 @@ export default function LandingPage() {
     <>
       <ParticleField />
 
-      <div className="relative z-10 flex h-screen flex-col bg-transparent text-white">
+      <div className="relative z-10 flex min-h-screen flex-col bg-transparent text-white">
         {/* ── NAV ─────────────────────────────────────────────── */}
         <nav
           className={`flex items-center justify-between px-8 py-6 transition-all duration-1000 ${mounted ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"}`}
         >
-          <span className="font-mono text-sm tracking-widest text-stone-600">
-            v1.0
-          </span>
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-3">
+            <Image
+              src="/logo.svg"
+              alt="openvlt"
+              width={28}
+              height={28}
+              className="size-7"
+            />
+            <span className="font-mono text-sm tracking-widest text-stone-500">
+              openvlt
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
             <Link
-              href="https://github.com/ericvaish/openvlt"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/register"
               className="font-mono text-xs tracking-widest text-stone-600 transition-colors hover:text-stone-300"
             >
-              GITHUB
+              REGISTER
             </Link>
             <Link
-              href="/get-started"
-              className="font-mono text-xs tracking-widest text-stone-600 transition-colors hover:text-[oklch(0.7_0.15_166)]"
+              href="/login"
+              className="rounded-full border border-white/10 bg-white/5 px-5 py-2 font-mono text-xs tracking-widest text-stone-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
             >
-              DOCS
+              SIGN IN
             </Link>
           </div>
         </nav>
 
         {/* ── CENTER HERO ────────────────────────────────────── */}
-        <div className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
+        <div className="flex flex-1 flex-col items-center justify-center px-6 pb-24">
           {/* Massive brand */}
           <div
             className={`transition-all delay-300 duration-1000 ${mounted ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}
@@ -208,8 +216,7 @@ export default function LandingPage() {
             className={`mt-6 transition-all delay-700 duration-1000 ${mounted ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}`}
           >
             <p className="text-center font-mono text-sm tracking-[0.2em] text-stone-500 sm:text-base">
-              open source &middot; self-hosted &middot; encrypted &middot;
-              markdown
+              your vault is ready
             </p>
           </div>
 
@@ -217,54 +224,30 @@ export default function LandingPage() {
           <div
             className={`mt-4 transition-all delay-1000 duration-1000 ${mounted ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}`}
           >
-            <p className="max-w-md text-center text-lg leading-relaxed text-stone-400">
-              Your notes as plain files on your server.
-              <br />
-              No cloud. No subscription. No compromise.
+            <p className="max-w-sm text-center text-lg leading-relaxed text-stone-400">
+              Sign in to start writing, or create an account
+              to set up your vault.
             </p>
           </div>
 
           {/* CTA */}
           <div
-            className={`mt-10 flex items-center gap-5 transition-all delay-[1200ms] duration-1000 ${mounted ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}`}
+            className={`mt-10 flex flex-col items-center gap-4 sm:flex-row sm:gap-5 transition-all delay-[1200ms] duration-1000 ${mounted ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}`}
           >
             <Link
-              href="/get-started"
+              href="/login"
               className="group relative inline-flex items-center gap-2 rounded-full bg-white px-8 py-3.5 font-mono text-sm font-semibold text-black transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_oklch(0.7_0.15_166/0.3)]"
             >
-              Get Started
+              Sign in
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
-            <a
-              href="https://github.com/ericvaish/openvlt"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-sm text-stone-500 underline decoration-stone-800 underline-offset-4 transition-colors hover:text-stone-300 hover:decoration-stone-500"
+            <Link
+              href="/register"
+              className="group inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-8 py-3.5 font-mono text-sm font-semibold text-stone-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
             >
-              Learn more
-            </a>
-          </div>
-        </div>
-
-        {/* ── SCREENSHOT rising from bottom ────────────────── */}
-        <div
-          className={`pointer-events-none relative mx-auto w-full max-w-5xl px-8 transition-all delay-[1600ms] duration-1000 ${mounted ? "translate-y-0 opacity-100" : "translate-y-12 opacity-0"}`}
-          style={{ perspective: "1200px" }}
-        >
-          <div
-            className="overflow-hidden rounded-t-2xl border border-b-0 border-white/10 shadow-[0_-20px_60px_oklch(0.5_0.1_166/0.1)]"
-            style={{
-              transform: "rotateX(8deg)",
-              transformOrigin: "bottom center",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/openvlt_demo.webp"
-              alt="openvlt app interface"
-              className="w-full"
-              loading="eager"
-            />
+              <UserPlus className="size-4" />
+              Create account
+            </Link>
           </div>
         </div>
 
@@ -283,22 +266,14 @@ export default function LandingPage() {
               Eric Vaish
             </a>
           </span>
-          <div className="flex items-center gap-5 font-mono text-xs text-stone-700">
-            <a
-              href="mailto:hi@ericvaish.com"
-              className="transition-colors hover:text-stone-400"
-            >
-              hi@ericvaish.com
-            </a>
-            <a
-              href="https://github.com/ericvaish/openvlt"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-colors hover:text-stone-400"
-            >
-              GitHub
-            </a>
-          </div>
+          <a
+            href="https://github.com/ericvaish/openvlt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-xs text-stone-700 transition-colors hover:text-stone-400"
+          >
+            GitHub
+          </a>
         </div>
       </div>
     </>

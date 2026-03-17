@@ -11,7 +11,7 @@
 
 <p align="center">
   Self-hosted, open-source notes app built on plain markdown files.<br/>
-  Think Obsidian meets Apple Notes. But you own everything. No Sync Conflicts.
+  Think Obsidian meets Apple Notes. But you own everything.
 </p>
 
 <p align="center">
@@ -51,6 +51,61 @@ openvlt was built out of frustration with tools that treat your data as their pr
 - **No cloud dependency.** Runs on your machine or your VPS. Your notes never pass through someone else's servers. If openvlt disappears tomorrow, your files are still right there on disk.
 - **Attachments that don't corrupt.** Files are stored alongside your notes as regular files on your filesystem. No re-encoding, no compression, no database blobs. What you put in is exactly what you get out.
 - **No vendor lock-in.** Every note is a plain markdown file. Walk away anytime with all your data intact, no export tool needed.
+
+<br />
+
+## Features
+
+### Rich Markdown Editor
+A TipTap-based editor with 20+ extensions for a polished writing experience. Active node reveal shows markdown syntax on the current line, headings can be folded and collapsed, and wiki-links connect your notes together. Slash commands give you quick access to headings, lists, task lists, blockquotes, code blocks, tables, callouts, toggle blocks, and embeds.
+
+### Canvas and Handwriting
+Full handwritten note support with pressure-sensitive pen input, a highlighter, lasso select, and a pixel eraser that splits strokes. Shape recognition automatically snaps freehand drawings into rectangles, ellipses, triangles, diamonds, arrows, pentagons, and hexagons. Configurable page sizes (A4, Letter, Legal, Infinite), background patterns (blank, ruled, grid, dot grid), and custom line spacing. Pen and highlighter presets with 13 stroke colors. Canvas notes are saved in the `.openvlt` ZIP format, which bundles the document, settings, and extracted text for full-text search.
+
+### Excalidraw Diagrams
+Create diagrams and sketches directly inside openvlt with an embedded Excalidraw editor.
+
+### Note Properties and Database Views
+Define custom properties on your notes (text, number, date, select, multi-select, checkbox, URL) and view them in a table or kanban layout. Properties sync to YAML frontmatter so they remain portable. Filter, sort, and organize notes by any property.
+
+### Sync and Cloud Backup
+**Cloud backup** to Google Drive with OAuth integration, incremental uploads via content hashing, configurable frequency (hourly to weekly), and backup versioning. **Peer-to-peer sync** between openvlt instances using a pairing system, sequential change logs, and real-time SSE streaming. Conflicts are resolved with three-way merge, and unresolvable conflicts surface both versions for you to choose from.
+
+### Version History and Time Machine
+Every edit is tracked with automatic snapshots triggered by autosave, idle, navigation, and manual saves. Browse your full history with a timeline slider, preview any version with a diff view, and restore with one click. Structure events (renames, moves, deletes) are logged alongside content changes. Attachments have their own version history too.
+
+### E2E Encrypted Locked Notes
+Lock sensitive notes with AES-256-GCM encryption, derived from your lock password via PBKDF2. Encrypted notes are unreadable without your password, even with direct database access.
+
+### Authentication
+Password-based auth with bcryptjs hashing, WebAuthn support for biometric login (Face ID, Touch ID, FIDO2 keys), and a 24-word mnemonic recovery key generated at registration.
+
+### Multi-Vault and Multi-User
+Each user gets isolated vault directories. Create multiple vaults per account and switch between them. Users cannot access each other's files, enforced at the service layer.
+
+### Search
+Full-text search powered by SQLite FTS5, with indexed note titles and content (including text extracted from canvas notes). A command palette (Cmd+K) provides global search across your vault.
+
+### Knowledge Graph and Backlinks
+A force-directed graph visualization shows how your notes connect through wiki-links. A backlinks panel on each note shows every note that references it.
+
+### Daily Notes and Templates
+Auto-generated daily notes with a journal template. Built-in templates for meeting notes, daily journals, and project briefs, plus custom templates with variable substitution (date, time, ISO).
+
+### Bookmarks
+Save bookmarks to notes, specific headings within notes, or saved search queries. Reorder them with drag-and-drop for quick access.
+
+### Sidebar
+Six panels: Files (hierarchical folder tree), Search, Quick Access (favorites, recents, daily note), Bookmarks, Database, and Settings. Folder expansion state persists across sessions. Simple and full display modes.
+
+### Attachments and Embeds
+Drag-and-drop file attachments stored alongside your notes on disk. Embed images, PDFs (with page navigation), videos, DOCX documents, YouTube videos, and web pages directly in your notes.
+
+### Export
+Export your entire vault as a ZIP file with the full directory structure, notes, and attachments included.
+
+### File System Watcher
+Chokidar-based file watching detects external changes to your vault directory and syncs them into openvlt automatically, so you can edit files with any tool and see changes reflected instantly.
 
 <br />
 
@@ -158,8 +213,10 @@ Data is stored in `./data/` on the host via bind mount. Server runs on port 3456
 | **Backend** | Next.js API routes, Node.js |
 | **Database** | SQLite via better-sqlite3 (WAL mode, FTS5) |
 | **Editor** | TipTap + tiptap-markdown |
+| **Canvas** | tldraw, Excalidraw |
 | **UI** | shadcn/ui, Tailwind CSS v4, Lucide icons |
 | **Auth** | bcryptjs + WebAuthn + recovery keys |
+| **Sync** | SSE streaming, three-way merge, Google Drive backup |
 | **Package Manager** | bun |
 | **Process Manager** | pm2 |
 
