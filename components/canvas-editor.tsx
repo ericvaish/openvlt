@@ -531,16 +531,8 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
     React.useState<TextNoteShape | null>(null)
   const [defaultSaved, setDefaultSaved] = React.useState(false)
   const [camera, setCamera] = React.useState({ x: 0, y: 0, z: 1 })
-  const [debugLog, setDebugLog] = React.useState<string[]>([])
-  const debugLogRef = React.useRef<string[]>([])
-  const addDebugRef = React.useRef((msg: string) => {
-    debugLogRef.current = [...debugLogRef.current.slice(-20), msg]
-    setDebugLog([...debugLogRef.current])
-  })
-  const clearDebug = React.useCallback(() => {
-    debugLogRef.current = []
-    setDebugLog([])
-  }, [])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const addDebugRef = React.useRef((_msg: string) => {})
 
   const updateTextNoteStyle = React.useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -845,40 +837,6 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
             createTextOnCanvasDoubleClick: false,
           }}
         />
-      </div>
-      {/* Debug overlay — shows touch event log on screen */}
-      <div style={{
-        position: "absolute",
-        bottom: 8,
-        left: 8,
-        background: "rgba(0,0,0,0.8)",
-        color: "#0f0",
-        fontSize: 11,
-        fontFamily: "monospace",
-        padding: "6px 10px",
-        borderRadius: 8,
-        zIndex: 99999,
-        pointerEvents: "auto",
-        maxWidth: "95%",
-        maxHeight: "40vh",
-        overflowY: "auto",
-        lineHeight: 1.5,
-        minWidth: 200,
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ color: "#888", fontSize: 9 }}>Touch Debug ({debugLog.length})</span>
-          <button
-            onClick={clearDebug}
-            style={{ background: "none", border: "1px solid #555", color: "#f88", fontSize: 9, padding: "1px 6px", borderRadius: 3, cursor: "pointer" }}
-          >
-            Clear
-          </button>
-        </div>
-        {debugLog.length === 0 ? (
-          <div style={{ color: "#555" }}>No events yet</div>
-        ) : (
-          debugLog.map((line, i) => <div key={i}>{line}</div>)
-        )}
       </div>
     </div>
   )
