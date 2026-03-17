@@ -197,7 +197,7 @@ export default function LandingPage() {
             <h1 className="text-center text-[clamp(4rem,15vw,14rem)] leading-[0.85] font-black tracking-[-0.06em] select-none">
               <ScrambleText
                 text="openvlt"
-                className="bg-gradient-to-b from-white via-white/90 to-white/20 bg-clip-text text-transparent"
+                className="text-white [text-shadow:0_0_80px_rgba(255,255,255,0.15)]"
                 delay={400}
               />
             </h1>

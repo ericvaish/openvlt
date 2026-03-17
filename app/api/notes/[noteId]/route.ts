@@ -132,6 +132,7 @@ export async function PUT(
         { status: error.status }
       )
     }
+    console.error("[PUT /api/notes] Error:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
