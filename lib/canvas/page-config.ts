@@ -1,6 +1,7 @@
 // Page sizes in pixels (at 96 DPI)
 export type PageSizeId = "a4" | "letter" | "legal" | "infinite"
 export type BackgroundPattern = "blank" | "ruled" | "grid" | "dot-grid"
+export type RuleStyle = "college" | "wide" | "narrow" | "custom"
 
 export interface PageSize {
   id: PageSizeId
@@ -27,10 +28,18 @@ export const BACKGROUND_PATTERNS: { id: BackgroundPattern; label: string }[] = [
 export const PAGE_MARGIN_LEFT = 60 // px — left margin (red line position)
 export const PAGE_MARGIN_TOP = 60 // px — top margin before content/lines start
 
-// Line spacing for ruled/grid patterns
-export const RULED_SPACING = 28 // px between ruled lines
-export const GRID_SPACING = 28 // px between grid lines
-export const DOT_SPACING = 28 // px between dots
+// Standard rule styles with their line spacing (at 96 DPI)
+export const RULE_STYLES: { id: RuleStyle; label: string; spacing: number }[] = [
+  { id: "college", label: "College", spacing: 27 },   // 7.1mm ≈ 27px
+  { id: "wide", label: "Wide", spacing: 34 },          // 8.7mm ≈ 34px
+  { id: "narrow", label: "Narrow", spacing: 20 },      // 5.3mm ≈ 20px
+  { id: "custom", label: "Custom", spacing: 28 },      // user-defined
+]
+
+// Default line spacing for ruled/grid patterns
+export const RULED_SPACING = 27 // px between ruled lines (college ruled default)
+export const GRID_SPACING = 27 // px between grid lines
+export const DOT_SPACING = 27 // px between dots
 
 export const CANVAS_SETTINGS_KEY = "openvlt:canvas-settings"
 
@@ -41,6 +50,9 @@ export interface CanvasSettings {
   pageSize: PageSizeId
   background: BackgroundPattern
   pageCount: number
+  ruleStyle?: RuleStyle
+  customSpacing?: number
+  pressureSensitivity?: boolean
 }
 
 export function getCanvasSettings(): CanvasSettings {

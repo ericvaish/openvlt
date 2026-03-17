@@ -87,6 +87,12 @@ export function TabPanel({ noteId, active, isSplit = false }: TabPanelProps) {
       strokeSize={canvasState.strokeSize}
       onStrokeColorChange={canvasState.onStrokeColorChange}
       onStrokeSizeChange={canvasState.onStrokeSizeChange}
+      ruleStyle={canvasState.ruleStyle}
+      customSpacing={canvasState.customSpacing}
+      onRuleStyleChange={canvasState.onRuleStyleChange}
+      onCustomSpacingChange={canvasState.onCustomSpacingChange}
+      pressureSensitivity={canvasState.pressureSensitivity}
+      onPressureSensitivityChange={canvasState.onPressureSensitivityChange}
     />
   ) : null
 

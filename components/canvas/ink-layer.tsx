@@ -67,31 +67,73 @@ export const InkLayer = React.forwardRef<InkLayerHandle, InkLayerProps>(
           const toX = (px: number) => (shape.x + px + camX) * zoom
           const toY = (py: number) => (shape.y + py + camY) * zoom
 
+          // Check if points have varying pressure (z != 0.5 constant)
+          const hasPressure = pts.some((p: { z?: number }) => p.z !== undefined && p.z !== 0.5)
+
           ctx.strokeStyle = color
-          ctx.lineWidth = baseWidth * zoom
           ctx.lineCap = "round"
           ctx.lineJoin = "round"
 
-          ctx.beginPath()
-          ctx.moveTo(toX(pts[0].x), toY(pts[0].y))
+          if (!hasPressure) {
+            // Uniform width — draw as single path for performance
+            ctx.lineWidth = baseWidth * zoom
+            ctx.beginPath()
+            ctx.moveTo(toX(pts[0].x), toY(pts[0].y))
 
-          if (pts.length === 2) {
-            ctx.lineTo(toX(pts[1].x), toY(pts[1].y))
-          } else {
-            const mx1 = (pts[0].x + pts[1].x) / 2
-            const my1 = (pts[0].y + pts[1].y) / 2
-            ctx.lineTo(toX(mx1), toY(my1))
+            if (pts.length === 2) {
+              ctx.lineTo(toX(pts[1].x), toY(pts[1].y))
+            } else {
+              const mx1 = (pts[0].x + pts[1].x) / 2
+              const my1 = (pts[0].y + pts[1].y) / 2
+              ctx.lineTo(toX(mx1), toY(my1))
 
-            for (let i = 1; i < pts.length - 1; i++) {
-              const mx = (pts[i].x + pts[i + 1].x) / 2
-              const my = (pts[i].y + pts[i + 1].y) / 2
-              ctx.quadraticCurveTo(toX(pts[i].x), toY(pts[i].y), toX(mx), toY(my))
+              for (let i = 1; i < pts.length - 1; i++) {
+                const mx = (pts[i].x + pts[i + 1].x) / 2
+                const my = (pts[i].y + pts[i + 1].y) / 2
+                ctx.quadraticCurveTo(toX(pts[i].x), toY(pts[i].y), toX(mx), toY(my))
+              }
+
+              const last = pts[pts.length - 1]
+              ctx.lineTo(toX(last.x), toY(last.y))
             }
+            ctx.stroke()
+          } else {
+            // Pressure-sensitive — draw segment by segment with varying width
+            for (let i = 0; i < pts.length - 1; i++) {
+              const p0 = pts[i]
+              const p1 = pts[i + 1]
+              const pressure = ((p0.z ?? 0.5) + (p1.z ?? 0.5)) / 2
+              // Map pressure 0–1 to width 0.3x–1.5x of base
+              const w = baseWidth * (0.3 + pressure * 1.2) * zoom
 
-            const last = pts[pts.length - 1]
-            ctx.lineTo(toX(last.x), toY(last.y))
+              ctx.lineWidth = w
+              ctx.beginPath()
+
+              if (i === 0) {
+                ctx.moveTo(toX(p0.x), toY(p0.y))
+                if (pts.length === 2) {
+                  ctx.lineTo(toX(p1.x), toY(p1.y))
+                } else {
+                  const mx = (p0.x + p1.x) / 2
+                  const my = (p0.y + p1.y) / 2
+                  ctx.lineTo(toX(mx), toY(my))
+                }
+              } else if (i < pts.length - 2) {
+                const prevMx = (pts[i - 1].x + p0.x) / 2
+                const prevMy = (pts[i - 1].y + p0.y) / 2
+                const mx = (p0.x + p1.x) / 2
+                const my = (p0.y + p1.y) / 2
+                ctx.moveTo(toX(prevMx), toY(prevMy))
+                ctx.quadraticCurveTo(toX(p0.x), toY(p0.y), toX(mx), toY(my))
+              } else {
+                const prevMx = (pts[i - 1].x + p0.x) / 2
+                const prevMy = (pts[i - 1].y + p0.y) / 2
+                ctx.moveTo(toX(prevMx), toY(prevMy))
+                ctx.quadraticCurveTo(toX(p0.x), toY(p0.y), toX(p1.x), toY(p1.y))
+              }
+              ctx.stroke()
+            }
           }
-          ctx.stroke()
         } catch {}
       }
     }, [editor])

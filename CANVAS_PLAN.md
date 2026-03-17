@@ -56,8 +56,8 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] Style bar closes when switching away from select tool
 - [x] Stroke style dropdown: size slider (S-XL) with preview, 13 colors, save as default
 - [x] Note header actions collapsed into "..." dropdown menu
-- [ ] Pressure sensitivity toggle in pen settings
-- [ ] Collapsible toolbar (show/hide ribbon)
+- [x] Pressure sensitivity toggle in pen settings
+- [x] Collapsible toolbar (show/hide ribbon)
 - [ ] Compact toolbar mode (smaller buttons)
 
 ## Phase 4: Pages and Backgrounds ✅
@@ -75,8 +75,8 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] Wider left margin (60px) with red margin line like a notebook
 - [x] Top margin (60px) for writing space
 - [x] Settings saved to localStorage
-- [ ] Standard notebook rule sizes (college ruled, wide ruled, square grid)
-- [ ] Custom line spacing option
+- [x] Standard notebook rule sizes (college ruled, wide ruled, narrow, custom)
+- [x] Custom line spacing option (slider 12–50px for custom rule style)
 
 ## Phase 5: Layers Panel
 

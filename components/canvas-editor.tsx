@@ -24,6 +24,8 @@ import {
   type PageSizeId,
   type BackgroundPattern,
   type CanvasSettings,
+  type RuleStyle,
+  RULE_STYLES,
   PAGE_SIZES,
   PAGE_MARGIN_LEFT,
   PAGE_MARGIN_TOP,
@@ -95,6 +97,12 @@ export interface CanvasEditorState {
   strokeSize: string
   onStrokeColorChange: (color: string) => void
   onStrokeSizeChange: (size: string) => void
+  ruleStyle: RuleStyle
+  customSpacing: number
+  onRuleStyleChange: (style: RuleStyle) => void
+  onCustomSpacingChange: (spacing: number) => void
+  pressureSensitivity: boolean
+  onPressureSensitivityChange: (enabled: boolean) => void
 }
 
 interface CanvasEditorProps {
@@ -390,11 +398,12 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
       })
 
       // Notify parent so toolbar can be rendered in the header
+      const cs = getCanvasSettings()
       onEditorReady?.({
         editor,
-        pageSize: getCanvasSettings().pageSize,
-        background: getCanvasSettings().background,
-        pageCount: getCanvasSettings().pageCount,
+        pageSize: cs.pageSize,
+        background: cs.background,
+        pageCount: cs.pageCount,
         onPageSizeChange: handlePageSizeChange,
         onBackgroundChange: handleBackgroundChange,
         onAddPage: handleAddPage,
@@ -403,6 +412,12 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         strokeSize: getStrokeDefaults().size,
         onStrokeColorChange: updateStrokeColor,
         onStrokeSizeChange: updateStrokeSize,
+        ruleStyle: cs.ruleStyle ?? "college",
+        customSpacing: cs.customSpacing ?? 27,
+        onRuleStyleChange: (s: RuleStyle) => setRuleStyle(s),
+        onCustomSpacingChange: (v: number) => setCustomSpacing(v),
+        pressureSensitivity: cs.pressureSensitivity ?? true,
+        onPressureSensitivityChange: (v: boolean) => setPressureSensitivity(v),
       })
 
       // Track camera for page button overlay and ink layer
@@ -468,6 +483,9 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
                   pageSize: pageSizeRef.current,
                   background: backgroundRef.current,
                   pageCount: pageCountRef.current,
+                  ruleStyle: ruleStyleRef.current,
+                  customSpacing: customSpacingRef.current,
+                  pressureSensitivity: pressureSensitivityRef.current,
                 },
               })
 
@@ -537,14 +555,23 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
   const [pageSize, setPageSize] = React.useState<PageSizeId>(() => initialSettings?.pageSize ?? getCanvasSettings().pageSize)
   const [background, setBackground] = React.useState<BackgroundPattern>(() => initialSettings?.background ?? getCanvasSettings().background)
   const [pageCount, setPageCount] = React.useState(() => initialSettings?.pageCount ?? getCanvasSettings().pageCount)
+  const [ruleStyle, setRuleStyle] = React.useState<RuleStyle>(() => initialSettings?.ruleStyle ?? getCanvasSettings().ruleStyle ?? "college")
+  const [customSpacing, setCustomSpacing] = React.useState(() => initialSettings?.customSpacing ?? getCanvasSettings().customSpacing ?? 27)
+  const [pressureSensitivity, setPressureSensitivity] = React.useState(() => initialSettings?.pressureSensitivity ?? getCanvasSettings().pressureSensitivity ?? true)
 
   // Refs for current settings so save callback always has latest values
   const pageSizeRef = React.useRef(pageSize)
   const backgroundRef = React.useRef(background)
   const pageCountRef = React.useRef(pageCount)
+  const ruleStyleRef = React.useRef(ruleStyle)
+  const customSpacingRef = React.useRef(customSpacing)
+  const pressureSensitivityRef = React.useRef(pressureSensitivity)
   React.useEffect(() => { pageSizeRef.current = pageSize }, [pageSize])
   React.useEffect(() => { backgroundRef.current = background }, [background])
   React.useEffect(() => { pageCountRef.current = pageCount }, [pageCount])
+  React.useEffect(() => { ruleStyleRef.current = ruleStyle }, [ruleStyle])
+  React.useEffect(() => { customSpacingRef.current = customSpacing }, [customSpacing])
+  React.useEffect(() => { pressureSensitivityRef.current = pressureSensitivity }, [pressureSensitivity])
 
   // Save when settings change (pageSize, background, pageCount)
   React.useEffect(() => {
@@ -559,7 +586,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
           type: "openvlt-canvas",
           version: 1,
           document: storeSnapshot,
-          settings: { pageSize, background, pageCount },
+          settings: { pageSize, background, pageCount, ruleStyle, customSpacing, pressureSensitivity },
         })
         await fetch(`/api/notes/${noteId}`, {
           method: "PUT",
@@ -571,11 +598,11 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         setSaving(false)
       }
     }, 1000)
-  }, [pageSize, background, pageCount, noteId])
+  }, [pageSize, background, pageCount, ruleStyle, customSpacing, pressureSensitivity, noteId])
 
   const handlePageSizeChange = React.useCallback((size: PageSizeId) => {
     setPageSize(size)
-    saveCanvasSettings({ pageSize: size, background, pageCount })
+    saveCanvasSettings({ pageSize: size, background, pageCount, ruleStyle, customSpacing, pressureSensitivity })
 
     // Update camera bounds
     if (editorRef.current) {
@@ -605,27 +632,27 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
 
   const handleBackgroundChange = React.useCallback((bg: BackgroundPattern) => {
     setBackground(bg)
-    saveCanvasSettings({ pageSize, background: bg, pageCount })
+    saveCanvasSettings({ pageSize, background: bg, pageCount, ruleStyle, customSpacing, pressureSensitivity })
   }, [pageSize, pageCount])
 
   const handleAddPage = React.useCallback(() => {
     const newCount = pageCount + 1
     setPageCount(newCount)
-    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+    saveCanvasSettings({ pageSize, background, pageCount: newCount, ruleStyle, customSpacing, pressureSensitivity })
   }, [pageSize, background, pageCount])
 
   const handleAddPageAt = React.useCallback((_index: number) => {
     // For now just add a page (position doesn't matter since pages are identical)
     const newCount = pageCount + 1
     setPageCount(newCount)
-    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+    saveCanvasSettings({ pageSize, background, pageCount: newCount, ruleStyle, customSpacing, pressureSensitivity })
   }, [pageSize, background, pageCount])
 
   const handleRemovePage = React.useCallback(() => {
     if (pageCount <= 1) return
     const newCount = pageCount - 1
     setPageCount(newCount)
-    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+    saveCanvasSettings({ pageSize, background, pageCount: newCount, ruleStyle, customSpacing, pressureSensitivity })
   }, [pageSize, background, pageCount])
 
   const handleDeletePageAt = React.useCallback((pageIndex: number) => {
@@ -658,7 +685,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
 
     const newCount = pageCount - 1
     setPageCount(newCount)
-    saveCanvasSettings({ pageSize, background, pageCount: newCount })
+    saveCanvasSettings({ pageSize, background, pageCount: newCount, ruleStyle, customSpacing, pressureSensitivity })
   }, [pageSize, background, pageCount, handleRemovePage])
 
   const handleClearPageAt = React.useCallback((pageIndex: number) => {
@@ -682,9 +709,9 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
   // Custom grid component that uses our page/background settings
   const components = React.useMemo(() => ({
     Grid: (props: { x: number; y: number; z: number; size: number }) => (
-      <CanvasBackground {...props} pageSize={pageSize} background={background} pageCount={pageCount} />
+      <CanvasBackground {...props} pageSize={pageSize} background={background} pageCount={pageCount} lineSpacing={customSpacing} />
     ),
-  }), [pageSize, background, pageCount])
+  }), [pageSize, background, pageCount, customSpacing])
 
 
   // Track selected text-note shape for the style bar

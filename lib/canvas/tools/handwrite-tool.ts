@@ -67,9 +67,20 @@ export class HandwriteTool extends StateNode {
     }
   }
 
+  private isPressureEnabled(): boolean {
+    try {
+      const stored = localStorage.getItem("openvlt:canvas-settings")
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        return parsed.pressureSensitivity !== false
+      }
+    } catch {}
+    return true
+  }
+
   override onPointerDown() {
     const { x, y, z } = this.editor.inputs.currentPagePoint
-    const pressure = z ?? 0.5
+    const pressure = this.isPressureEnabled() ? (z ?? 0.5) : 0.5
     this.shapeId = createShapeId()
     this.originX = x
     this.originY = y
@@ -130,7 +141,7 @@ export class HandwriteTool extends StateNode {
     if (!this.shapeId) return
 
     const { x, y, z } = this.editor.inputs.currentPagePoint
-    const pressure = z ?? 0.5
+    const pressure = this.isPressureEnabled() ? (z ?? 0.5) : 0.5
     const px = x - this.originX
     const py = y - this.originY
 
@@ -150,7 +161,9 @@ export class HandwriteTool extends StateNode {
       const ly = this.lastScreenY - sb.y
 
       const zoom = this.editor.getZoomLevel()
-      const w = Math.max(0.5, this.strokeWidth * zoom)
+      const pressureEnabled = this.isPressureEnabled()
+      const pw = pressureEnabled ? (0.3 + pressure * 1.2) : 1
+      const w = Math.max(0.5, this.strokeWidth * pw * zoom)
 
       this.ctx.strokeStyle = this.color
       this.ctx.lineWidth = w

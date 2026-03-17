@@ -22,6 +22,7 @@ interface CanvasBackgroundProps {
   pageSize: PageSizeId
   background: BackgroundPattern
   pageCount: number
+  lineSpacing?: number
 }
 
 export function CanvasBackground({
@@ -31,6 +32,7 @@ export function CanvasBackground({
   pageSize,
   background,
   pageCount,
+  lineSpacing: lineSpacingProp,
 }: CanvasBackgroundProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const editor = useEditor()
@@ -134,7 +136,7 @@ export function CanvasBackground({
 
     for (const region of pageRegions) {
       if (background === "ruled") {
-        const spacing = RULED_SPACING
+        const spacing = lineSpacingProp ?? RULED_SPACING
         const startY = Math.ceil(region.top / spacing) * spacing
 
         // Red margin line
@@ -157,7 +159,7 @@ export function CanvasBackground({
       }
 
       if (background === "grid") {
-        const spacing = GRID_SPACING
+        const spacing = lineSpacingProp ?? GRID_SPACING
         const startX = Math.ceil(drawLeft / spacing) * spacing
         const startY = Math.ceil(region.top / spacing) * spacing
 
@@ -182,7 +184,7 @@ export function CanvasBackground({
       }
 
       if (background === "dot-grid") {
-        const spacing = DOT_SPACING
+        const spacing = lineSpacingProp ?? DOT_SPACING
         const dotSize = Math.max(1.5, 2 * z)
         const dotColor = isDark ? "rgba(140,160,200,0.3)" : "rgba(140,160,200,0.45)"
 
@@ -201,7 +203,7 @@ export function CanvasBackground({
         }
       }
     }
-  }, [x, y, z, pageSize, background, editor])
+  }, [x, y, z, pageSize, background, pageCount, lineSpacingProp, editor])
 
   return <canvas ref={canvasRef} className="tl-grid" />
 }
