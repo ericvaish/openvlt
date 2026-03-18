@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import {
   PlusIcon,
   TrashIcon,
@@ -39,11 +40,13 @@ function SectionCard({
   title,
   description,
   icon: Icon,
+  badge,
   children,
 }: {
   title: string
   description?: string
   icon?: React.ElementType
+  badge?: string
   children: React.ReactNode
 }) {
   return (
@@ -55,7 +58,14 @@ function SectionCard({
           </div>
         )}
         <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold">{title}</h3>
+            {badge && (
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {badge}
+              </span>
+            )}
+          </div>
           {description && (
             <p className="text-xs text-muted-foreground">{description}</p>
           )}
@@ -80,7 +90,7 @@ const PROVIDER_DESCRIPTIONS: Record<string, string> = {
   anthropic: "Pay-per-token via Anthropic API.",
   openrouter: "Access 300+ models. Pay-per-token via OpenRouter.",
   "claude-code":
-    "Use your Claude Max subscription. No per-token cost.",
+    "Use your Claude Pro, Max, or Team subscription. No per-token cost.",
 }
 
 const PROVIDER_PLACEHOLDERS: Record<string, string> = {
@@ -147,6 +157,8 @@ function CodexSetupGuide({ onReady }: { onReady: () => void }) {
       const data = await res.json()
       setAuthUrl(data.authUrl)
       setPolling(true)
+      // Auto-open in browser
+      window.open(data.authUrl, "_blank", "noopener")
     } catch {
       // ignore
     } finally {
@@ -159,6 +171,22 @@ function CodexSetupGuide({ onReady }: { onReady: () => void }) {
     navigator.clipboard.writeText(authUrl)
     setCopiedUrl(true)
     setTimeout(() => setCopiedUrl(false), 2000)
+  }
+
+  const [disconnecting, setDisconnecting] = React.useState(false)
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true)
+    try {
+      const res = await fetch("/api/ai/codex-logout", { method: "POST" })
+      if (res.ok) {
+        setStatus({ installed: false, authenticated: false, hasAccountId: false })
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDisconnecting(false)
+    }
   }
 
   const isAuthenticated = status?.authenticated ?? false
@@ -180,19 +208,33 @@ function CodexSetupGuide({ onReady }: { onReady: () => void }) {
                 </p>
               </div>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={checkStatus}
-              disabled={loading}
-            >
-              {loading ? (
-                <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
-              ) : (
-                <RefreshCwIcon className="mr-1.5 size-3.5" />
-              )}
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={checkStatus}
+                disabled={loading || disconnecting}
+              >
+                {loading ? (
+                  <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <RefreshCwIcon className="mr-1.5 size-3.5" />
+                )}
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={handleDisconnect}
+                disabled={disconnecting || loading}
+              >
+                {disconnecting ? (
+                  <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
+                ) : null}
+                Disconnect
+              </Button>
+            </div>
           </div>
         </div>
       ) : (
@@ -209,26 +251,41 @@ function CodexSetupGuide({ onReady }: { onReady: () => void }) {
           </div>
 
           {!authUrl ? (
-            <Button
-              onClick={handleGenerateLink}
-              disabled={generatingUrl || loading}
-              className="gap-2"
-            >
-              {generatingUrl ? (
-                <LoaderIcon className="size-4 animate-spin" />
-              ) : (
-                <ExternalLinkIcon className="size-4" />
-              )}
-              {generatingUrl
-                ? "Generating sign-in link..."
-                : "Log in to ChatGPT"}
-            </Button>
+            <>
+              <Button
+                onClick={handleGenerateLink}
+                disabled={generatingUrl || loading}
+                className="gap-2"
+              >
+                {generatingUrl ? (
+                  <LoaderIcon className="size-4 animate-spin" />
+                ) : (
+                  <ExternalLinkIcon className="size-4" />
+                )}
+                {generatingUrl
+                  ? "Generating sign-in link..."
+                  : "Log in to ChatGPT"}
+              </Button>
+
+              <p className="text-xs text-muted-foreground">
+                Requires an active ChatGPT Plus or Pro subscription.
+              </p>
+            </>
           ) : (
             <div className="space-y-3">
-              <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3">
-                <p className="mb-2 text-sm font-medium">
-                  Open this link in any browser where you are signed in to
-                  ChatGPT:
+              {polling && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderIcon className="size-3.5 animate-spin" />
+                  Waiting for you to sign in... This page will update
+                  automatically.
+                </div>
+              )}
+
+              <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+                <p className="mb-2 text-xs text-muted-foreground">
+                  A sign-in page should have opened in your browser. If not,
+                  copy this link and open it in the browser where you are signed
+                  in to ChatGPT:
                 </p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded bg-muted px-2 py-1.5 text-xs">
@@ -249,13 +306,7 @@ function CodexSetupGuide({ onReady }: { onReady: () => void }) {
                   </Button>
                 </div>
               </div>
-              {polling && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <LoaderIcon className="size-3.5 animate-spin" />
-                  Waiting for you to sign in... This page will update
-                  automatically.
-                </div>
-              )}
+
               <Button
                 size="sm"
                 variant="ghost"
@@ -268,34 +319,6 @@ function CodexSetupGuide({ onReady }: { onReady: () => void }) {
               </Button>
             </div>
           )}
-
-          <div className="rounded-md bg-muted/50 p-3">
-            <p className="text-xs font-medium text-muted-foreground">
-              How it works
-            </p>
-            <ol className="mt-1.5 list-inside list-decimal space-y-1 text-xs text-muted-foreground/80">
-              <li>Click "Log in to ChatGPT" to generate a sign-in link</li>
-              <li>
-                Copy the link and open it in the browser where you are signed
-                in to your OpenAI/ChatGPT account
-              </li>
-              <li>Sign in and authorize openvlt</li>
-              <li>
-                This page will update automatically once connected
-              </li>
-            </ol>
-          </div>
-
-          <div className="rounded-md bg-muted/50 p-3">
-            <p className="text-xs font-medium text-muted-foreground">
-              Requirements
-            </p>
-            <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground/80">
-              <li>
-                An active ChatGPT Plus ($20/month) or Pro ($200/month) subscription
-              </li>
-            </ul>
-          </div>
         </div>
       )}
     </div>
@@ -307,9 +330,26 @@ interface ClaudeCodeStatus {
   authenticated: boolean
 }
 
+type ClaudeLoginState =
+  | "idle"
+  | "starting"
+  | "url_ready"
+  | "waiting"
+  | "success"
+  | "error"
+
 function ClaudeCodeSetupGuide({ onReady }: { onReady: () => void }) {
   const [status, setStatus] = React.useState<ClaudeCodeStatus | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [loginState, setLoginState] = React.useState<ClaudeLoginState>("idle")
+  const [authUrl, setAuthUrl] = React.useState<string | null>(null)
+  const [terminalOutput, setTerminalOutput] = React.useState<string[]>([])
+  const [showDetails, setShowDetails] = React.useState(false)
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null)
+  const sessionRef = React.useRef<string | null>(null)
+  const eventSourceRef = React.useRef<EventSource | null>(null)
+  const terminalEndRef = React.useRef<HTMLDivElement>(null)
+  const [polling, setPolling] = React.useState(false)
 
   const checkStatus = React.useCallback(async () => {
     setLoading(true)
@@ -320,6 +360,8 @@ function ClaudeCodeSetupGuide({ onReady }: { onReady: () => void }) {
         setStatus(data)
         if (data.authenticated) {
           onReady()
+          setLoginState("idle")
+          setPolling(false)
         }
       }
     } catch {
@@ -333,88 +375,434 @@ function ClaudeCodeSetupGuide({ onReady }: { onReady: () => void }) {
     checkStatus()
   }, [checkStatus])
 
+  // Poll for auth completion after user opens the auth URL
+  React.useEffect(() => {
+    if (!polling) return
+    const interval = setInterval(() => {
+      checkStatus()
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [polling, checkStatus])
+
+  // Auto-scroll terminal output
+  React.useEffect(() => {
+    terminalEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [terminalOutput])
+
+  // Cleanup on unmount
+  React.useEffect(() => {
+    return () => {
+      eventSourceRef.current?.close()
+    }
+  }, [])
+
+  const startLogin = async () => {
+    setLoginState("starting")
+    setTerminalOutput([])
+    setAuthUrl(null)
+    setErrorMessage(null)
+
+    try {
+      const res = await fetch("/api/ai/claude-code-login", { method: "POST" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setLoginState("error")
+        setErrorMessage(data.error || "Failed to start login")
+        return
+      }
+
+      const { sessionId } = await res.json()
+      sessionRef.current = sessionId
+
+      // Connect to SSE stream
+      const es = new EventSource(
+        `/api/ai/claude-code-login/stream?session=${sessionId}`
+      )
+      eventSourceRef.current = es
+
+      es.addEventListener("output", (e) => {
+        try {
+          const { text } = JSON.parse(e.data)
+          if (text) {
+            setTerminalOutput((prev) => [...prev, text])
+          }
+        } catch {
+          // ignore parse errors
+        }
+      })
+
+      es.addEventListener("url", (e) => {
+        try {
+          const { url } = JSON.parse(e.data)
+          setAuthUrl(url)
+          setLoginState("url_ready")
+        } catch {
+          // ignore
+        }
+      })
+
+      es.addEventListener("status", (e) => {
+        try {
+          const { status: s, message } = JSON.parse(e.data)
+          if (s === "success") {
+            setLoginState("success")
+            setPolling(false)
+            checkStatus()
+          } else if (s === "error") {
+            setLoginState("error")
+            setErrorMessage(message || "Login failed")
+            setPolling(false)
+          }
+        } catch {
+          // ignore
+        }
+      })
+
+      es.addEventListener("done", () => {
+        es.close()
+        eventSourceRef.current = null
+      })
+
+      es.onerror = () => {
+        // SSE connection lost, check if auth succeeded
+        es.close()
+        eventSourceRef.current = null
+        // Always check status when SSE drops - the login may have succeeded
+        checkStatus()
+      }
+    } catch {
+      setLoginState("error")
+      setErrorMessage("Failed to connect to login service")
+    }
+  }
+
+  const cancelLogin = async () => {
+    if (sessionRef.current) {
+      await fetch(
+        `/api/ai/claude-code-login?session=${sessionRef.current}`,
+        { method: "DELETE" }
+      ).catch(() => {})
+    }
+    eventSourceRef.current?.close()
+    eventSourceRef.current = null
+    sessionRef.current = null
+    setLoginState("idle")
+    setAuthUrl(null)
+    setTerminalOutput([])
+    setPolling(false)
+  }
+
+  const [copiedUrl, setCopiedUrl] = React.useState(false)
+
+  const openAuthUrl = () => {
+    if (authUrl) {
+      window.open(authUrl, "_blank", "noopener")
+      setLoginState("waiting")
+      setPolling(true)
+    }
+  }
+
+  const copyAuthUrl = () => {
+    if (!authUrl) return
+    navigator.clipboard.writeText(authUrl)
+    setCopiedUrl(true)
+    setTimeout(() => setCopiedUrl(false), 2000)
+  }
+
+  const [disconnecting, setDisconnecting] = React.useState(false)
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true)
+    try {
+      const res = await fetch("/api/ai/claude-code-logout", { method: "POST" })
+      if (res.ok) {
+        setStatus({ installed: status?.installed ?? true, authenticated: false })
+        setLoginState("idle")
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
   const isAuthenticated = status?.authenticated ?? false
-  const isInstalled = status?.installed ?? false
+  const isInProgress =
+    loginState === "starting" ||
+    loginState === "url_ready" ||
+    loginState === "waiting"
 
   return (
     <div className="space-y-4">
       {isAuthenticated ? (
+        // ── Connected state ──
         <div className="rounded-md border border-green-500/20 bg-green-500/5 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <CircleCheckIcon className="size-5 text-green-500" />
               <div>
                 <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                  Claude Code connected
+                  Connected to Claude
                 </p>
                 <p className="text-xs text-green-600/70 dark:text-green-400/60">
-                  Using your Max subscription. No per-token charges.
+                  Using your Claude subscription. No per-token charges.
                 </p>
               </div>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={checkStatus}
-              disabled={loading}
-            >
-              {loading ? (
-                <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
-              ) : (
-                <RefreshCwIcon className="mr-1.5 size-3.5" />
-              )}
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={checkStatus}
+                disabled={loading || disconnecting}
+              >
+                {loading ? (
+                  <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <RefreshCwIcon className="mr-1.5 size-3.5" />
+                )}
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={handleDisconnect}
+                disabled={disconnecting || loading}
+              >
+                {disconnecting ? (
+                  <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
+                ) : null}
+                Disconnect
+              </Button>
+            </div>
           </div>
         </div>
       ) : (
+        // ── Not connected ──
         <div className="space-y-4">
-          <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-4">
-            <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
-              {isInstalled
-                ? "Claude Code is installed but not authenticated"
-                : "Claude Code not detected"}
-            </p>
-            <p className="mt-1 text-xs text-blue-600/80 dark:text-blue-400/70">
-              {isInstalled
-                ? "Run `claude login` in your terminal to authenticate."
-                : "Claude Code is bundled with openvlt. Run `claude login` in your terminal to authenticate with your Max subscription."}
-            </p>
-          </div>
+          {/* Not connected — idle */}
+          {loginState === "idle" && (
+            <>
+              <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-4">
+                <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                  Use your Claude subscription
+                </p>
+                <p className="mt-1 text-xs text-blue-600/80 dark:text-blue-400/70">
+                  Sign in with your Anthropic account to use AI chat at no extra
+                  cost. Your subscription covers usage.
+                </p>
+              </div>
 
-          <div className="rounded-md bg-muted/50 p-3">
-            <p className="text-xs font-medium text-muted-foreground">
-              How to connect
-            </p>
-            <ol className="mt-1.5 list-inside list-decimal space-y-1 text-xs text-muted-foreground/80">
-              <li>
-                Run{" "}
-                <code className="rounded bg-muted px-1 py-0.5">
-                  claude login
-                </code>{" "}
-                in your terminal
-              </li>
-              <li>Sign in with your Anthropic account</li>
-              <li>Come back here and click "Check again"</li>
-            </ol>
-            <p className="mt-2 text-xs text-muted-foreground/60">
-              Requires an active Claude Max subscription.
-            </p>
-          </div>
+              <Button onClick={startLogin} disabled={loading} className="gap-2">
+                {loading ? (
+                  <LoaderIcon className="size-4 animate-spin" />
+                ) : (
+                  <ExternalLinkIcon className="size-4" />
+                )}
+                Connect Claude
+              </Button>
 
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={checkStatus}
-            disabled={loading}
-          >
-            {loading ? (
-              <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
-            ) : (
-              <RefreshCwIcon className="mr-1.5 size-3.5" />
-            )}
-            Check again
-          </Button>
+              <p className="text-xs text-muted-foreground">
+                Requires an active Claude Pro, Max, or Team subscription.
+              </p>
+            </>
+          )}
+
+          {/* Login in progress */}
+          {isInProgress && (
+            <div className="space-y-3">
+              {/* Step indicators */}
+              <div className="space-y-2">
+                {/* Step 1: Starting */}
+                <div className="flex items-center gap-2.5">
+                  {loginState === "starting" ? (
+                    <LoaderIcon className="size-4 shrink-0 animate-spin text-blue-500" />
+                  ) : (
+                    <CircleCheckIcon className="size-4 shrink-0 text-green-500" />
+                  )}
+                  <span
+                    className={`text-sm ${
+                      loginState === "starting"
+                        ? "text-foreground"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    Starting login...
+                  </span>
+                </div>
+
+                {/* Step 2: Authenticate */}
+                {(loginState === "url_ready" || loginState === "waiting") && (
+                  <div className="flex items-center gap-2.5">
+                    {loginState === "url_ready" ? (
+                      <div className="size-4 shrink-0 rounded-full border-2 border-blue-500" />
+                    ) : (
+                      <CircleCheckIcon className="size-4 shrink-0 text-green-500" />
+                    )}
+                    <span
+                      className={`text-sm ${
+                        loginState === "url_ready"
+                          ? "font-medium text-foreground"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      Authenticate with Anthropic
+                    </span>
+                  </div>
+                )}
+
+                {/* Step 3: Waiting */}
+                {loginState === "waiting" && (
+                  <div className="flex items-center gap-2.5">
+                    <LoaderIcon className="size-4 shrink-0 animate-spin text-blue-500" />
+                    <span className="text-sm text-foreground">
+                      Waiting for you to sign in...
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Auth URL button */}
+              {loginState === "url_ready" && authUrl && (
+                <Button onClick={openAuthUrl} className="gap-2">
+                  <ExternalLinkIcon className="size-4" />
+                  Open authentication page
+                </Button>
+              )}
+
+              {/* Waiting message */}
+              {loginState === "waiting" && (
+                <p className="text-xs text-muted-foreground">
+                  Complete the sign-in in your browser. This page will update
+                  automatically once connected.
+                </p>
+              )}
+
+              {/* Show auth URL for copying */}
+              {authUrl && (loginState === "url_ready" || loginState === "waiting") && (
+                <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {loginState === "url_ready"
+                      ? "Or copy this link to open in a different browser:"
+                      : "If the page didn't open, copy this link and open it manually:"}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded bg-muted px-2 py-1.5 text-xs">
+                      {authUrl.slice(0, 80)}...
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 gap-1.5"
+                      onClick={copyAuthUrl}
+                    >
+                      {copiedUrl ? (
+                        <CheckIcon className="size-3.5 text-green-500" />
+                      ) : (
+                        <CopyIcon className="size-3.5" />
+                      )}
+                      {copiedUrl ? "Copied" : "Copy link"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Terminal output */}
+              <div>
+                <button
+                  onClick={() => setShowDetails(!showDetails)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {showDetails ? "Hide" : "Show"} details
+                </button>
+                {showDetails && terminalOutput.length > 0 && (
+                  <div className="mt-2 max-h-32 overflow-y-auto rounded-md bg-zinc-950 p-3 font-mono text-xs leading-relaxed text-zinc-400">
+                    {terminalOutput.map((line, i) => (
+                      <div key={i} className="whitespace-pre-wrap break-all">
+                        {line}
+                      </div>
+                    ))}
+                    <div ref={terminalEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {/* Cancel button */}
+              <Button size="sm" variant="ghost" onClick={cancelLogin}>
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {/* Error state */}
+          {loginState === "error" && (
+            <div className="space-y-3">
+              <div className="rounded-md border border-red-500/20 bg-red-500/5 p-4">
+                <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                  Login failed
+                </p>
+                <p className="mt-1 text-xs text-red-600/80 dark:text-red-400/70">
+                  {errorMessage || "An unknown error occurred."}
+                </p>
+              </div>
+
+              {/* Show terminal output on error for debugging */}
+              {terminalOutput.length > 0 && (
+                <div className="max-h-32 overflow-y-auto rounded-md bg-zinc-950 p-3 font-mono text-xs leading-relaxed text-zinc-400">
+                  {terminalOutput.map((line, i) => (
+                    <div key={i} className="whitespace-pre-wrap break-all">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setLoginState("idle")
+                    setErrorMessage(null)
+                    setTerminalOutput([])
+                  }}
+                >
+                  Try again
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={checkStatus}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCwIcon className="mr-1.5 size-3.5" />
+                  )}
+                  Check status
+                </Button>
+              </div>
+
+            </div>
+          )}
+
+          {/* Success state (brief, before status check refreshes to connected) */}
+          {loginState === "success" && (
+            <div className="rounded-md border border-green-500/20 bg-green-500/5 p-4">
+              <div className="flex items-center gap-2.5">
+                <CircleCheckIcon className="size-5 text-green-500" />
+                <div>
+                  <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                    Successfully connected!
+                  </p>
+                  <p className="text-xs text-green-600/70 dark:text-green-400/60">
+                    Claude is now ready to use.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -611,9 +999,11 @@ export function AISettingsTab() {
 
       {/* ── Subscriptions Tab ── */}
       {activeTab === "subscriptions" && (
+        <>
         <SectionCard
           title="Subscriptions"
           description="Use your existing AI subscriptions. No per-token cost."
+          badge="Recommended"
         >
           <div className="space-y-3">
             {/* ChatGPT (Codex CLI) */}
@@ -625,24 +1015,22 @@ export function AISettingsTab() {
                     isEnabled ? "border-green-500/20" : "border-border"
                   }`}
                 >
-                  <label
-                    className={`flex cursor-pointer items-center gap-3 px-3.5 py-3 transition-colors hover:bg-muted/50 ${
+                  <div
+                    className={`flex items-center gap-3 px-3.5 py-3 ${
                       isEnabled ? "bg-green-500/5" : ""
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={isEnabled}
-                      onChange={() => toggleProvider("codex")}
-                      className="size-3.5 rounded"
-                    />
                     <div className="flex-1">
                       <span className="text-sm font-medium">ChatGPT</span>
                       <p className="text-xs text-muted-foreground">
                         ChatGPT Plus or Pro subscription
                       </p>
                     </div>
-                  </label>
+                    <Switch
+                      checked={isEnabled}
+                      onCheckedChange={() => toggleProvider("codex")}
+                    />
+                  </div>
                   {isEnabled && (
                     <div className="border-t border-green-500/10 px-3.5 py-3">
                       <CodexSetupGuide onReady={() => {}} />
@@ -661,24 +1049,22 @@ export function AISettingsTab() {
                     isEnabled ? "border-green-500/20" : "border-border"
                   }`}
                 >
-                  <label
-                    className={`flex cursor-pointer items-center gap-3 px-3.5 py-3 transition-colors hover:bg-muted/50 ${
+                  <div
+                    className={`flex items-center gap-3 px-3.5 py-3 ${
                       isEnabled ? "bg-green-500/5" : ""
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={isEnabled}
-                      onChange={() => toggleProvider("claude-code")}
-                      className="size-3.5 rounded"
-                    />
                     <div className="flex-1">
                       <span className="text-sm font-medium">Claude</span>
                       <p className="text-xs text-muted-foreground">
-                        Claude Max subscription
+                        Claude Pro, Max, or Team subscription
                       </p>
                     </div>
-                  </label>
+                    <Switch
+                      checked={isEnabled}
+                      onCheckedChange={() => toggleProvider("claude-code")}
+                    />
+                  </div>
                   {isEnabled && (
                     <div className="border-t border-green-500/10 px-3.5 py-3">
                       <ClaudeCodeSetupGuide onReady={() => {}} />
@@ -689,6 +1075,18 @@ export function AISettingsTab() {
             })()}
           </div>
         </SectionCard>
+        <p className="text-xs text-muted-foreground">
+          Facing problems?{" "}
+          <a
+            href="https://openvlt.com/docs/ai-setup"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-foreground"
+          >
+            View setup guide
+          </a>
+        </p>
+        </>
       )}
 
       {/* ── API Keys Tab ── */}
@@ -714,8 +1112,8 @@ export function AISettingsTab() {
                       : "border-border"
                   }`}
                 >
-                  <label
-                    className={`flex cursor-pointer items-center gap-3 px-3.5 py-3 transition-colors hover:bg-muted/50 ${
+                  <div
+                    className={`flex items-center gap-3 px-3.5 py-3 ${
                       isEnabled
                         ? hasKey
                           ? "bg-green-500/5"
@@ -723,12 +1121,6 @@ export function AISettingsTab() {
                         : ""
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={isEnabled}
-                      onChange={() => toggleProvider(provider)}
-                      className="size-3.5 rounded"
-                    />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">
@@ -751,7 +1143,11 @@ export function AISettingsTab() {
                         {PROVIDER_DESCRIPTIONS[provider]}
                       </p>
                     </div>
-                  </label>
+                    <Switch
+                      checked={isEnabled}
+                      onCheckedChange={() => toggleProvider(provider)}
+                    />
+                  </div>
                   {isEnabled && (
                     <div className="border-t px-3.5 py-3">
                       <div className="flex items-center gap-2">

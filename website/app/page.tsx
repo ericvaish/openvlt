@@ -180,7 +180,7 @@ export default function LandingPage() {
               GITHUB
             </Link>
             <Link
-              href="/get-started"
+              href="/docs"
               className="font-mono text-xs tracking-widest text-stone-600 transition-colors hover:text-[oklch(0.7_0.15_166)]"
             >
               DOCS
@@ -229,7 +229,7 @@ export default function LandingPage() {
             className={`mt-10 flex items-center gap-5 transition-all delay-[1200ms] duration-1000 ${mounted ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}`}
           >
             <Link
-              href="/get-started"
+              href="/docs/get-started"
               className="group relative inline-flex items-center gap-2 rounded-full bg-white px-8 py-3.5 font-mono text-sm font-semibold text-black transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_oklch(0.7_0.15_166/0.3)]"
             >
               Get Started
