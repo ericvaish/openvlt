@@ -40,7 +40,7 @@ export class HandwriteTool extends StateNode {
     "light-green": "#4cb05e", "light-red": "#f87777", red: "#e03131",
     white: "#FFFFFF",
   }
-  private readonly SIZE_MAP: Record<string, number> = { s: 1.5, m: 3, l: 5, xl: 9 }
+  private readonly SIZE_MAP: Record<string, number> = { xs: 0.75, s: 1.5, m: 3, l: 5, xl: 9 }
 
   override onEnter() {
     this.editor.setCursor({ type: "cross", rotation: 0 })
@@ -50,11 +50,11 @@ export class HandwriteTool extends StateNode {
   private initWetInkCanvas() {
     if (this.canvas) return
 
-    const container = document.querySelector(".canvas-editor-wrapper .tl-container")
+    const container = this.editor.getContainer()
     if (container) {
       this.canvas = document.createElement("canvas")
       this.canvas.style.cssText =
-        "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;"
+        "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:400;"
       const dpr = window.devicePixelRatio || 1
       const rect = container.getBoundingClientRect()
       this.canvas.width = rect.width * dpr
@@ -117,29 +117,23 @@ export class HandwriteTool extends StateNode {
 
     // Read from active pen preset
     let colorName = "black"
-    let sizeName = "m"
+    let sizeName = "s"
     let penType: "pen" | "highlighter" = "pen"
     try {
-      const presets = JSON.parse(localStorage.getItem("openvlt:pen-presets") || "[]")
+      const defaultPresets = [
+        { type: "pen", color: "black", size: "xs" },
+        { type: "pen", color: "blue", size: "m" },
+        { type: "pen", color: "red", size: "m" },
+        { type: "highlighter", color: "yellow", size: "l" },
+      ]
+      const stored = localStorage.getItem("openvlt:pen-presets")
+      const presets = stored ? JSON.parse(stored) : defaultPresets
       const activeIdx = parseInt(localStorage.getItem("openvlt:active-pen") || "0") || 0
-      const preset = presets[activeIdx]
-      if (preset) {
-        colorName = preset.color || "black"
-        sizeName = preset.size || "m"
-        penType = preset.type || "pen"
-      }
+      const preset = Array.isArray(presets) && presets[activeIdx] ? presets[activeIdx] : defaultPresets[0]
+      colorName = preset.color || "black"
+      sizeName = preset.size || "s"
+      penType = preset.type || "pen"
     } catch {}
-    // Fallback to old stroke defaults if no presets
-    if (colorName === "black" && sizeName === "m") {
-      try {
-        const stored = localStorage.getItem("openvlt:stroke-defaults")
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          colorName = parsed.color || "black"
-          sizeName = parsed.size || "m"
-        }
-      } catch {}
-    }
 
     this.color = this.COLOR_MAP[colorName] || "#1d1d1d"
     this.strokeWidth = this.SIZE_MAP[sizeName] || 3
@@ -194,7 +188,8 @@ export class HandwriteTool extends StateNode {
       const ly = this.lastScreenY - sb.y
 
       const zoom = this.editor.getZoomLevel()
-      const w = Math.max(0.5, this.strokeWidth * zoom)
+      const pw = this.isPressureEnabled() ? (0.5 + pressure * 0.5) : 1
+      const w = Math.max(0.5, this.strokeWidth * pw * zoom)
 
       this.ctx.globalAlpha = this.opacity
       this.ctx.strokeStyle = this.color
@@ -238,35 +233,28 @@ export class HandwriteTool extends StateNode {
 
     this.isDrawing = false
 
-    // Clear wet ink after a frame — gives InkLayer time to render first
+    // Clear wet ink after one frame — tldraw renders the SVG shape immediately
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this.clearWetInk()
-      })
+      this.clearWetInk()
     })
 
     // Read from active pen preset (same as onPointerDown)
     let colorName = "black"
-    let sizeName = "m"
+    let sizeName = "s"
     try {
-      const presets = JSON.parse(localStorage.getItem("openvlt:pen-presets") || "[]")
+      const defaultPresets = [
+        { type: "pen", color: "black", size: "xs" },
+        { type: "pen", color: "blue", size: "m" },
+        { type: "pen", color: "red", size: "m" },
+        { type: "highlighter", color: "yellow", size: "l" },
+      ]
+      const stored = localStorage.getItem("openvlt:pen-presets")
+      const presets = stored ? JSON.parse(stored) : defaultPresets
       const activeIdx = parseInt(localStorage.getItem("openvlt:active-pen") || "0") || 0
-      const preset = presets[activeIdx]
-      if (preset) {
-        colorName = preset.color || "black"
-        sizeName = preset.size || "m"
-      }
+      const preset = Array.isArray(presets) && presets[activeIdx] ? presets[activeIdx] : defaultPresets[0]
+      colorName = preset.color || "black"
+      sizeName = preset.size || "s"
     } catch {}
-    if (colorName === "black" && sizeName === "m") {
-      try {
-        const stored = localStorage.getItem("openvlt:stroke-defaults")
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          colorName = parsed.color || "black"
-          sizeName = parsed.size || "m"
-        }
-      } catch {}
-    }
 
     // Try shape recognition if snap-to-shape is enabled (not for highlighter)
     if (this.isSnapToShapeEnabled() && this.penType !== "highlighter" && this.points.length >= 5) {

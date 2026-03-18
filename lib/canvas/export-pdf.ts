@@ -10,7 +10,7 @@ const COLOR_MAP: Record<string, string> = {
   white: "#FFFFFF",
 }
 
-const SIZE_MAP: Record<string, number> = { s: 1.5, m: 3, l: 5, xl: 9 }
+const SIZE_MAP: Record<string, number> = { xs: 0.75, s: 1.5, m: 3, l: 5, xl: 9 }
 
 interface Shape {
   x: number

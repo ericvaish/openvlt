@@ -266,10 +266,10 @@ export function CanvasToolbarInline({ editor, pageSize: initialPageSize, backgro
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] text-muted-foreground">Thin</span>
                   <input
-                    type="range" min={0} max={3} step={1}
-                    value={["s", "m", "l", "xl"].indexOf(preset.size)}
+                    type="range" min={0} max={4} step={1}
+                    value={["xs", "s", "m", "l", "xl"].indexOf(preset.size)}
                     onChange={(e) => {
-                      const sizes = ["s", "m", "l", "xl"] as const
+                      const sizes = ["xs", "s", "m", "l", "xl"] as const
                       const updated = [...penPresets]
                       updated[idx] = { ...updated[idx], size: sizes[parseInt(e.target.value)] }
                       setPenPresets(updated)

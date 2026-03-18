@@ -5,12 +5,12 @@
 A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown text and freeform drawing coexist on the same surface. Built on tldraw with custom text shapes powered by TipTap.
 
 ### Key Decisions
-- **File format**: `.canvas.json` for now → `.openvlt` (ZIP) later
+- **File format**: `.openvlt` (ZIP containing document.json, settings.json, content.md, manifest.json)
 - **Canvas engine**: tldraw
 - **Text input**: Model C — invisible text regions, borderless until selected
-- **Note types**: Markdown (`.md`) and Canvas (`.canvas.json`) coexist
+- **Note types**: Markdown (`.md`) and Canvas (`.openvlt`) coexist
 - **Input**: Apple Pencil/stylus = active tool, finger = pan/zoom
-- **Ink rendering**: Custom high-DPI canvas layer (InkLayer) bypasses tldraw's blurry CSS transforms
+- **Ink rendering**: tldraw-native SVG rendering (migrated from custom InkLayer canvas in Phase 11)
 
 ---
 
@@ -51,13 +51,13 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 
 - [x] Hide tldraw's default UI (`hideUi` prop)
 - [x] Inline toolbar integrated into note header bar
-- [x] Tools: Select, Hand, Pen, Eraser, Shapes (dropdown: rectangle/ellipse/triangle/line/arrow), Text, Undo/Redo
-- [x] Shapes dropdown with active shape indicator
-- [x] Style bar closes when switching away from select tool
-- [x] Stroke style dropdown: size slider (S-XL) with preview, 13 colors, save as default
-- [x] Note header actions collapsed into "..." dropdown menu
-- [x] Pressure sensitivity toggle in pen settings
-- [x] Collapsible toolbar (show/hide ribbon)
+- [x] Tools: Select, Hand, Lasso, Pen presets, Eraser (stroke/pixel), Shapes, Text, Undo/Redo
+- [x] Shapes dropdown (single tap opens menu)
+- [x] Eraser dropdown (double tap to switch stroke/pixel mode)
+- [x] Note header actions collapsed into "..." dropdown menu for canvas notes
+- [x] Pressure sensitivity toggle in page settings
+- [x] Draw with finger toggle in page settings
+- [x] Snap-to-shape toggle in page settings
 - [ ] Compact toolbar mode (smaller buttons)
 
 ## Phase 4: Pages and Backgrounds ✅
@@ -69,16 +69,18 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] Dynamic page size switching per note
 - [x] Free camera movement (no restrictive bounds)
 - [x] Visual page boundary with white page + grey outside area
-- [x] Multi-page support with "+" buttons between pages
+- [x] Multi-page support with "+" buttons between pages (inserts page at position, shifts shapes)
 - [x] Page mask overlay hides content drawn outside fixed-size pages
 - [x] Light blue line color for iPad visibility
 - [x] Wider left margin (60px) with red margin line like a notebook
 - [x] Top margin (60px) for writing space
-- [x] Settings saved to localStorage
+- [x] Settings saved to localStorage and synced via document JSON
 - [x] Standard notebook rule sizes (college ruled, wide ruled, narrow, custom)
 - [x] Custom line spacing option (slider 12–50px for custom rule style)
+- [x] Clear page and delete page buttons with confirmation dialogs
+- [x] Page gap overlay clamp fix (no longer expands when scrolled past viewport)
 
-## Phase 5: Layers Panel
+## Phase 5: Layers Panel (skipped)
 
 - [ ] Side panel listing all shapes sorted by z-index
 - [ ] Drag to reorder layers
@@ -114,6 +116,7 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] Tap outside text block to close/deselect
 - [x] "Draw with finger" toggle option (when enabled, finger draws too)
 - [x] Store preference in localStorage
+- [x] Inertial scrolling with momentum and friction decay after finger lift
 
 ## Phase 7.5: Custom Handwrite Tool ✅
 
@@ -123,22 +126,30 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [x] High-DPI InkLayer renders completed strokes at native screen resolution
 - [x] Smooth quadratic bezier curves (Catmull-Rom style) during and after drawing
 - [x] No flicker on pen lift (delayed wet ink clear)
-- [x] Pressure-sensitive stroke width from Apple Pencil
+- [x] Pressure-sensitive stroke width from Apple Pencil (Catmull-Rom sampled filled circles)
 - [x] Proper z-index layering: ink (1) < page mask (2) < add-page buttons (3)
+- [x] XS pen size (0.75px) for ultra-thin strokes
+- [x] Pen presets: multiple pens with individual color/size/type settings
+- [x] Highlighter pen type (35% opacity, wider strokes)
+- [x] Add/delete pen presets with "+" button
+- [x] Preset icons show color and type (pen/highlighter)
 - [ ] Fix text block rendering resolution (tldraw CSS transform limitation)
-- [ ] Investigate rendering text blocks as HTML overlay for crisp text
 
 ## Phase 8: Snap-to-Shape + Lasso Select ✅
 
 - [x] Shape recognition on stroke completion:
-  - Detect approximate circles, rectangles, triangles, lines
+  - Detect circles, rectangles, triangles, diamonds, arrows, pentagons, hexagons
   - Confidence threshold → replace freehand stroke with clean tldraw geo shape
-- [x] Toggle snap-to-shape in toolbar/settings (stroke menu toggle)
+  - Dedicated triangle detector to prevent rectangle misclassification
+- [x] Toggle snap-to-shape in page settings menu
+- [x] Highlighter skips snap-to-shape
+- [x] Recognized shapes use active pen color
 - [x] Lasso select tool:
   - Draw freeform selection loop with dashed outline + blue fill
   - Select all shapes inside the lasso polygon (ray casting algorithm)
   - Works across all shape types (handwrite, text-note, geo, etc.)
 - [x] Selected content can be moved, copied, resized, deleted as group (tldraw built-in)
+- [x] Rotation handle hidden on handwrite and text-note shapes
 
 ## Phase 9: Eraser Modes ✅
 
@@ -148,33 +159,54 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
   - Eraser circle cursor with trail visualization
   - Finds handwrite strokes intersecting with eraser path
   - Splits affected strokes at erased sections into new shapes
-  - Preserves remaining segments with original color/size/pressure
+  - Preserves remaining segments with original color/size/pressure/penType
+  - Deletes text/geo shapes when eraser touches their bounds
 - [x] Eraser dropdown in toolbar to switch between stroke/pixel mode
 
-## Phase 10: Version History for Canvas ✅
+## Phase 10: Version History + PDF Export ✅
 
 - [x] Canvas JSON snapshots in existing TimeMachine version system (already works via saveVersionGrouped)
 - [x] Read-only canvas preview component (renders strokes, text, geo shapes on canvas element)
 - [x] Auto-fit zoom to show all content with padding
 - [x] Highlighter strokes render with correct opacity in preview
 - [x] Shape count summary below preview (strokes, text blocks, shapes)
-- [x] Integrated into TimeMachine panel — auto-detects canvas versions
+- [x] Integrated into TimeMachine panel as dropdown from 3-dot menu
 - [x] Diff tab hidden for canvas notes (JSON diff not useful)
 - [x] Restore button works (restores canvas JSON to current version)
+- [x] PDF export from 3-dot menu (jspdf, client-side, 4x resolution)
+- [x] PDF includes background patterns (ruled/grid/dot-grid with margins)
+- [x] PDF respects page size, page count, and line spacing settings
+
+---
+
+## Phase 11: Migration to tldraw-native rendering ✅
+
+- [x] Rewrote `HandwriteShapeUtil.component()` to render visible SVG paths instead of invisible div
+- [x] Pressure strokes use `perfect-freehand` (`getStroke`) → filled SVG `<path>` outline
+- [x] Non-pressure strokes use `buildSmoothPath()` → stroked SVG `<path>` with uniform width
+- [x] Highlighter rendering: 35% opacity, minimum width of 12
+- [x] Updated `indicator()` to use filled outline path for pressure strokes
+- [x] Added `xs: 0.75` to `SIZE_MAP` in handwrite-shape.tsx (was missing, existed in InkLayer)
+- [x] Reduced wet ink rAF delay from 2 frames to 1 (tldraw renders SVG immediately)
+- [x] Removed InkLayer component, import, ref, `isDrawing` state, and all `redraw()` calls from canvas-editor.tsx
+- [x] Deleted `components/canvas/ink-layer.tsx`
+- [x] Data format unchanged — existing handwrite shapes render with new SVG pipeline automatically
+- [x] tldraw handles all rendering, panning, zooming, selection, erasing natively
 
 ---
 
 ## Known Limitations
 
 - **Text block resolution**: Text inside tldraw shapes is rendered at CSS-transform resolution (can be blurry when zoomed in). Fixing requires rendering text as HTML overlay outside tldraw, which is a significant architectural change.
-- **tldraw's minimum stroke width**: 2px (S size) is tldraw's hardcoded minimum. Thinner lines would require forking tldraw's STROKE_SIZES.
+- **Panning performance**: ~~InkLayer redraws all strokes every frame~~ Fixed in Phase 11 — strokes now render as tldraw-native SVG paths.
+- **iPad breakpoint**: Tailwind `md:hidden` (768px) doesn't work reliably on iPad Safari. Using `@media (min-width: 600px)` inline style instead.
 
 ## Future Enhancements (Post-MVP)
 
-- [ ] PDF export — render canvas as-is (drawings + text + layout)
+- [x] PDF export — render canvas as-is (drawings + text + layout + backgrounds)
 - [ ] Markdown export — extract text, convert drawings to inline SVG/PNG
 - [ ] XY/XYZ graph shape templates
-- [ ] Highlighter pen tool
+- [x] Highlighter pen tool (implemented as pen preset type)
 - [ ] Pencil (textured) pen tool
 - [ ] Import Excalidraw notes into canvas system
 - [ ] Collaboration / real-time sync for canvas notes

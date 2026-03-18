@@ -9,7 +9,7 @@ const PRESETS_KEY = "openvlt:pen-presets"
 const ACTIVE_KEY = "openvlt:active-pen"
 
 const DEFAULT_PRESETS: PenPreset[] = [
-  { id: "pen-1", type: "pen", color: "black", size: "s" },
+  { id: "pen-1", type: "pen", color: "black", size: "xs" },
   { id: "pen-2", type: "pen", color: "blue", size: "m" },
   { id: "pen-3", type: "pen", color: "red", size: "m" },
   { id: "hl-1", type: "highlighter", color: "yellow", size: "l" },
