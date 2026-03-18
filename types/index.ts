@@ -495,3 +495,102 @@ export interface LoginResponse {
   methods?: string[]
   error?: string
 }
+
+// ── AI Integration ──
+
+export type AIProviderType =
+  | "codex"
+  | "openai"
+  | "anthropic"
+  | "openrouter"
+  | "claude-code"
+
+export interface AIConfig {
+  mcpEnabled: boolean
+  chatEnabled: boolean
+  /** @deprecated Use chatProviders instead */
+  chatProvider: AIProviderType | null
+  chatProviders: AIProviderType[]
+  chatModel: string | null
+}
+
+export interface AIApiToken {
+  id: string
+  name: string
+  tokenPrefix: string
+  lastUsedAt: string | null
+  createdAt: string
+}
+
+export interface AIProviderKeyStatus {
+  provider: AIProviderType
+  configured: boolean
+}
+
+export interface AIChatAttachment {
+  id: string
+  type: "note" | "image" | "file"
+  filename: string
+  mediaType: string
+  /** Note ID if type is "note" */
+  noteId?: string
+  /** Base64 data for images */
+  dataUrl?: string
+  /** Text content for notes */
+  textContent?: string
+}
+
+export interface AIChatMessage {
+  role: "user" | "assistant" | "system" | "tool"
+  content: string
+  toolCalls?: AIToolCall[]
+  toolCallId?: string
+  reasoning?: string
+  attachments?: AIChatAttachment[]
+}
+
+export interface AIToolCall {
+  id: string
+  name: string
+  parameters: Record<string, unknown>
+  result?: unknown
+  status: "pending" | "executing" | "completed" | "error"
+}
+
+export type AIConversationStatus =
+  | "active"
+  | "generating"
+  | "completed"
+  | "error"
+
+export interface AIConversation {
+  id: string
+  userId: string
+  vaultId: string
+  title: string | null
+  provider: AIProviderType | null
+  model: string | null
+  status: AIConversationStatus
+  usage: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens?: number
+    cachedTokens?: number
+  } | null
+  error: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AIMessageRecord {
+  id: string
+  conversationId: string
+  role: AIChatMessage["role"]
+  content: string
+  reasoning?: string
+  toolCalls?: AIToolCall[]
+  toolCallId?: string
+  attachments?: AIChatAttachment[]
+  seq: number
+  createdAt: string
+}

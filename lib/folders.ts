@@ -309,13 +309,14 @@ export function getFolderTree(
 
   const notes = db
     .prepare(
-      "SELECT id, title, file_path, parent_id FROM notes WHERE is_trashed = 0 AND user_id = ? AND vault_id = ? ORDER BY title"
+      "SELECT id, title, file_path, parent_id, note_type FROM notes WHERE is_trashed = 0 AND user_id = ? AND vault_id = ? ORDER BY title"
     )
     .all(userId, vaultId) as {
     id: string
     title: string
     file_path: string
     parent_id: string | null
+    note_type: string | null
   }[]
 
   // In advanced mode, fetch attachments grouped by note
@@ -370,11 +371,17 @@ export function getFolderTree(
 
   // Group notes by parent
   for (const note of notes) {
+    const noteExt =
+      note.note_type === "excalidraw"
+        ? ".excalidraw"
+        : note.note_type === "canvas"
+          ? ".canvas"
+          : ".md"
     const children: TreeNode[] | undefined = advanced
       ? [
           {
             id: `${note.id}:md`,
-            name: `${note.title}.md`,
+            name: `${note.title}${noteExt}`,
             path: note.file_path,
             type: "file" as const,
           },
@@ -382,9 +389,14 @@ export function getFolderTree(
         ]
       : undefined
 
+    const displayName =
+      note.note_type === "excalidraw"
+        ? `${note.title}.excalidraw`
+        : note.title
+
     const node: TreeNode = {
       id: note.id,
-      name: note.title,
+      name: displayName,
       path: note.file_path,
       type: "file",
       children: advanced ? children : undefined,

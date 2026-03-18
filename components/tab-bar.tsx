@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { XIcon, PlusIcon, ChevronDownIcon } from "lucide-react"
+import { XIcon, PlusIcon, ChevronDownIcon, SparklesIcon } from "lucide-react"
 import { useTabStore, type Tab } from "@/lib/stores/tab-store"
+import { useAIChat } from "@/lib/stores/ai-chat-store"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import {
   Popover,
@@ -35,6 +36,7 @@ function TabCurve({ side }: { side: "left" | "right" }) {
 export function TabBar() {
   const { tabs, activeTabId, setActiveTab, closeTab, openTab, reorderTab } =
     useTabStore()
+  const { isOpen: aiChatOpen, toggle: toggleAIChat } = useAIChat()
   const [panelOpen, setPanelOpen] = React.useState(false)
   const [dropTargetIndex, setDropTargetIndex] = React.useState<number | null>(
     null
@@ -183,7 +185,7 @@ export function TabBar() {
       <Popover open={panelOpen} onOpenChange={setPanelOpen}>
         <PopoverTrigger asChild>
           <button
-            className="mb-1.5 mr-3 ml-2 shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="mb-1.5 ml-2 shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
             title="Search tabs"
           >
             <ChevronDownIcon className="size-3.5" />
@@ -197,6 +199,17 @@ export function TabBar() {
           <TabSearchPanel onClose={() => setPanelOpen(false)} />
         </PopoverContent>
       </Popover>
+      <button
+        onClick={toggleAIChat}
+        className={`mb-1.5 ml-1 mr-3 shrink-0 rounded p-1 transition-colors ${
+          aiChatOpen
+            ? "bg-accent text-foreground"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+        }`}
+        title="Toggle AI Chat"
+      >
+        <SparklesIcon className="size-3.5" />
+      </button>
     </div>
   )
 }

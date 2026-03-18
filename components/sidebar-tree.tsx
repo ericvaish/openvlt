@@ -564,6 +564,7 @@ export function SidebarTree({
                 onRefresh={onRefresh}
                 parentId={null}
                 flatOrder={flatOrder}
+                siblingNames={nodes.map((n) => n.name)}
               />
             ))}
           </SidebarMenu>
@@ -582,12 +583,14 @@ function TreeItem({
   nested = false,
   parentId = null,
   flatOrder,
+  siblingNames = [],
 }: {
   node: TreeNode
   onRefresh: () => void
   nested?: boolean
   parentId?: string | null
   flatOrder: string[]
+  siblingNames?: string[]
 }) {
   const router = useRouter()
   const { openTab, closeTab, activeTabId } = useTabStore()
@@ -769,7 +772,23 @@ function TreeItem({
   }
 
   async function handleRename() {
-    const newName = await promptDialog({ title: "Rename", description: `Rename "${node.name}" to:`, defaultValue: node.name })
+    const otherNames = new Set(
+      siblingNames
+        .filter((n) => n !== node.name)
+        .map((n) => n.toLowerCase())
+    )
+    const newName = await promptDialog({
+      title: "Rename",
+      description: `Rename "${node.name}" to:`,
+      defaultValue: node.name,
+      validate: (value) => {
+        const trimmed = value.trim()
+        if (!trimmed) return "Name cannot be empty"
+        if (otherNames.has(trimmed.toLowerCase()))
+          return "An item with this name already exists"
+        return null
+      },
+    })
     if (!newName?.trim() || newName.trim() === node.name) return
     if (node.type === "folder") {
       await fetch(`/api/folders/${node.id}`, {
@@ -1032,10 +1051,20 @@ function TreeItem({
         }
       : {}
 
-  const dropClass = dropTarget ? "ring-2 ring-primary/50 rounded-md" : ""
-  const selectClass = isNodeSelected
-    ? "bg-primary/10 ring-1 ring-inset ring-primary/30 rounded-md"
+  const dropClass = dropTarget ? "ring-2 ring-inset ring-primary/50 rounded-md" : ""
+
+  // Unified highlight props for selected items AND the single active item.
+  // Both folders and notes use these same props so styling is consistent.
+  // Ring comes from className; background comes from the sidebar component's
+  // data-active + our global CSS rule [data-active][data-sidebar-selected].
+  const isHighlighted = isNodeSelected || isItemActive
+  const highlightClass = isHighlighted
+    ? "ring-1 ring-inset ring-primary/30 dark:ring-primary/50 rounded-md"
     : ""
+  const highlightProps = {
+    isActive: isActive || isHighlighted,
+    "data-sidebar-selected": isHighlighted || undefined,
+  }
 
   // ── Shared: wrapper + button based on nesting ──
 
@@ -1055,6 +1084,7 @@ function TreeItem({
           <ContextMenuTrigger asChild>
             <Btn
               data-tree-id={node.id}
+              {...highlightProps}
               onClick={(e: React.MouseEvent) => {
                 const handled = handleSelect(node.id, e, flatOrder)
                 if (!handled) {
@@ -1063,7 +1093,7 @@ function TreeItem({
                   setActiveItemId(node.id)
                 }
               }}
-              className={`${dropClass} ${selectClass} ${!isNodeSelected && isItemActive ? "ring-2 ring-inset ring-primary! rounded-md font-medium" : ""}`}
+              className={`${dropClass} ${highlightClass}`}
               {...dragProps}
               {...dropProps}
             >
@@ -1102,7 +1132,7 @@ function TreeItem({
                 {child.type === "attachment" ? (
                   <AttachmentItem node={child} onRefresh={onRefresh} />
                 ) : (
-                  <TreeItem node={child} onRefresh={onRefresh} nested parentId={node.id} flatOrder={flatOrder} />
+                  <TreeItem node={child} onRefresh={onRefresh} nested parentId={node.id} flatOrder={flatOrder} siblingNames={node.children!.map((c) => c.name)} />
                 )}
               </SidebarMenuSubItem>
             ))}
@@ -1134,7 +1164,7 @@ function TreeItem({
           <ContextMenuTrigger asChild>
             <Btn
               data-tree-id={node.id}
-              isActive={isActive}
+              {...highlightProps}
               onClick={(e: React.MouseEvent) => {
                 const handled = handleSelect(node.id, e, flatOrder)
                 if (!handled) {
@@ -1142,7 +1172,7 @@ function TreeItem({
                   toggle(node.id)
                 }
               }}
-              className={`${selectClass} ${!isNodeSelected && isItemActive ? "ring-2 ring-inset ring-primary! rounded-md" : ""}`}
+              className={highlightClass}
               {...dragProps}
             >
               <ChevronRightIcon
@@ -1203,12 +1233,12 @@ function TreeItem({
       <ContextMenuTrigger asChild>
         <Btn
           data-tree-id={node.id}
-          isActive={isActive}
+          {...highlightProps}
           onClick={(e: React.MouseEvent) => {
             const handled = handleSelect(node.id, e, flatOrder)
             if (!handled) openNote()
           }}
-          className={`${selectClass} ${!isNodeSelected && isItemActive ? "ring-2 ring-inset ring-primary! rounded-md" : ""}`}
+          className={highlightClass}
           {...dragProps}
         >
           <NoteIcon className="size-4 shrink-0" />

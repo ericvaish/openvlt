@@ -235,6 +235,13 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     defaultBinding: { key: "h", modifiers: ["meta", "shift"] },
     allowInEditor: true,
   },
+  {
+    id: "toggleAIChat",
+    label: "AI Chat",
+    category: "general",
+    defaultBinding: { key: "l", modifiers: ["meta", "shift"] },
+    allowInEditor: true,
+  },
 ]
 
 const definitionMap = new Map(SHORTCUT_DEFINITIONS.map((d) => [d.id, d]))

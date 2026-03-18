@@ -32,6 +32,7 @@ import {
   SmartphoneIcon,
   FingerprintIcon,
   CopyIcon,
+  SparklesIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -53,6 +54,7 @@ import {
 import { confirmDialog, promptDialog } from "@/lib/dialogs"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { User, BackupFrequency, BackupRun, SyncPairing, TwoFactorStatus } from "@/types"
+import { AISettingsTab } from "@/components/ai-settings"
 import { QRCodeSVG } from "qrcode.react"
 import { startRegistration } from "@simplewebauthn/browser"
 
@@ -118,7 +120,28 @@ export function SettingsPanel() {
   const { layout: sidebarLayout, setLayout: setSidebarLayout } =
     useSidebarLayout()
   const [user, setUser] = React.useState<User | null>(null)
-  const [activeTab, setActiveTab] = React.useState("general")
+
+  // Persist active settings tab in URL hash (survives refresh)
+  const validTabs = ["general", "account", "data", "sync", "shortcuts", "ai", "appearance", "about"]
+  const [activeTab, setActiveTabState] = React.useState(() => {
+    if (typeof window === "undefined") return "general"
+    const hash = window.location.hash.slice(1) // remove #
+    return validTabs.includes(hash) ? hash : "general"
+  })
+  const setActiveTab = React.useCallback((tab: string) => {
+    setActiveTabState(tab)
+    window.history.replaceState(null, "", `#${tab}`)
+  }, [])
+  // Listen for hash changes (browser back/forward)
+  React.useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash.slice(1)
+      if (validTabs.includes(hash)) setActiveTabState(hash)
+    }
+    window.addEventListener("hashchange", onHashChange)
+    return () => window.removeEventListener("hashchange", onHashChange)
+  }, [])
+
   const tabsScrollRef = React.useRef<HTMLDivElement>(null)
 
   // 2FA state
@@ -658,6 +681,11 @@ export function SettingsPanel() {
                         label: "Shortcuts",
                       },
                       {
+                        value: "ai",
+                        icon: SparklesIcon,
+                        label: "AI",
+                      },
+                      {
                         value: "update",
                         icon: ArrowDownCircleIcon,
                         label: "Update",
@@ -1093,17 +1121,18 @@ export function SettingsPanel() {
                     )}
 
                     {/* Register new passkey */}
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <input
                         type="text"
                         value={passkeyName}
                         onChange={(e) => setPasskeyName(e.target.value)}
                         placeholder="Passkey name (e.g. MacBook)"
-                        className="h-9 flex-1 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                        className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
                       />
                       <Button
                         variant="outline"
                         size="sm"
+                        className="shrink-0"
                         onClick={handleRegisterPasskey}
                         disabled={twoFALoading}
                       >
@@ -1423,9 +1452,9 @@ export function SettingsPanel() {
                 icon={CloudIcon}
               >
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
                         <CloudIcon className="size-5 text-muted-foreground" />
                       </div>
                       <div>
@@ -1800,20 +1829,20 @@ export function SettingsPanel() {
                         placeholder="https://other-instance.example.com:3456"
                         className="h-9 w-full rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
                       />
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row">
                         <input
                           type="text"
                           value={pairUsername}
                           onChange={(e) => setPairUsername(e.target.value)}
                           placeholder="Username on remote"
-                          className="h-9 flex-1 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
                         />
                         <input
                           type="password"
                           value={pairPassword}
                           onChange={(e) => setPairPassword(e.target.value)}
                           placeholder="Password on remote"
-                          className="h-9 flex-1 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
                         />
                       </div>
                     </div>
@@ -1902,6 +1931,11 @@ export function SettingsPanel() {
               </SectionCard>
             </TabsContent>
 
+            {/* ── AI Tab ── */}
+            <TabsContent value="ai" className="space-y-6">
+              <AISettingsTab />
+            </TabsContent>
+
             {/* ── Update Tab ── */}
             <TabsContent value="update" className="space-y-6">
               <SectionCard
@@ -1910,7 +1944,7 @@ export function SettingsPanel() {
                 icon={RefreshCwIcon}
               >
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm font-medium">openvlt</p>
                       <p className="text-xs text-muted-foreground">
@@ -1931,6 +1965,7 @@ export function SettingsPanel() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="shrink-0 self-start sm:self-auto"
                       onClick={checkForUpdates}
                       disabled={updateChecking}
                     >

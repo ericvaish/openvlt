@@ -78,15 +78,40 @@ function RailIcon({
   )
 }
 
+function NoVaultPlaceholder() {
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => setMounted(true), [])
+
+  return (
+    <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+      <p className="text-sm text-muted-foreground">
+        Create a vault to get started
+      </p>
+      {mounted && (
+        <CreateVaultDialog
+          trigger={
+            <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
+              <PlusIcon className="size-4" />
+              Create Vault
+            </button>
+          }
+        />
+      )}
+    </div>
+  )
+}
+
 export function AppSidebarRail() {
   const { openTab, closeAllTabs } = useTabStore()
   const { getBinding } = useShortcuts()
   const data = useSidebarData()
 
-  const [activePanel, setActivePanel] = React.useState<SidebarPanel>(() => {
-    if (typeof window === "undefined") return "files"
-    return (localStorage.getItem(PANEL_KEY) as SidebarPanel) || "files"
-  })
+  const [activePanel, setActivePanel] = React.useState<SidebarPanel>("files")
+
+  React.useEffect(() => {
+    const stored = localStorage.getItem(PANEL_KEY) as SidebarPanel | null
+    if (stored) setActivePanel(stored)
+  }, [])
 
   function switchPanel(panel: SidebarPanel) {
     setActivePanel(panel)
@@ -172,19 +197,7 @@ export function AppSidebarRail() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                Create a vault to get started
-              </p>
-              <CreateVaultDialog
-                trigger={
-                  <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
-                    <PlusIcon className="size-4" />
-                    Create Vault
-                  </button>
-                }
-              />
-            </div>
+            <NoVaultPlaceholder />
           )}
         </SidebarContent>
 

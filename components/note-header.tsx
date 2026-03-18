@@ -18,6 +18,7 @@ import {
   FileTextIcon,
   TagIcon,
   PlusIcon,
+  SparklesIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -35,6 +36,7 @@ import { LockDialog } from "@/components/lock-dialog"
 import { addBookmark } from "@/components/bookmarks-panel"
 import { IconPicker } from "@/components/icon-picker"
 import { toast } from "sonner"
+import { useAIChat } from "@/lib/stores/ai-chat-store"
 import { confirmDialog } from "@/lib/dialogs"
 import { TimeMachinePanel } from "@/components/history/time-machine-panel"
 import type { NoteMetadata } from "@/types/note"
@@ -64,6 +66,7 @@ export function NoteHeader({ note, isSplit = false, pane = "main", toolbarSlot }
     closeSplit,
     closeMainAndPromoteSplit,
   } = useTabStore()
+  const { isOpen: aiChatOpen, toggle: toggleAIChat } = useAIChat()
   const [title, setTitle] = React.useState(note.title)
   const [isFavorite, setIsFavorite] = React.useState(note.isFavorite)
   const [isLocked, setIsLocked] = React.useState(note.isLocked)
@@ -382,6 +385,16 @@ export function NoteHeader({ note, isSplit = false, pane = "main", toolbarSlot }
                 onClick={async () => { await addBookmark("note", title, note.id); setIsBookmarked((prev) => !prev) }}
               >
                 {isBookmarked ? <BookmarkCheckIcon className="size-4 fill-primary text-primary" /> : <BookmarkPlusIcon className="size-4" />}
+              </Button>
+            </Tip>
+            <Tip label="AI Chat">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0"
+                onClick={toggleAIChat}
+              >
+                <SparklesIcon className={`size-4 ${aiChatOpen ? "text-primary" : ""}`} />
               </Button>
             </Tip>
             <Popover>

@@ -11,6 +11,9 @@ import { CustomCssInjector } from "@/components/custom-css-injector"
 import { ConflictResolver } from "@/components/conflict-resolver"
 import { CardModeContainer } from "@/components/card-mode-container"
 import { ShortcutsProvider } from "@/lib/stores/shortcuts-store"
+import { OfflineProvider } from "@/components/offline-provider"
+import { OfflineBanner } from "@/components/offline-banner"
+import { AIChatProvider } from "@/lib/stores/ai-chat-store"
 
 export default async function AppLayout({
   children,
@@ -28,7 +31,9 @@ export default async function AppLayout({
       <TabProvider>
         <ShortcutsProvider>
         <CardModeProvider>
-        <SidebarProvider>
+        <OfflineProvider>
+        <AIChatProvider>
+        <SidebarProvider className="h-svh max-h-svh overflow-hidden">
           <SidebarSwitcher />
           <CardModeContainer />
           {/* min-w-0 + overflow-hidden: prevents horizontal overflow when
@@ -36,6 +41,7 @@ export default async function AppLayout({
               split panes size for full viewport width and overflow past the
               sidebar. Do not remove these classes. */}
           <SidebarInset className="min-w-0 overflow-hidden">
+            <OfflineBanner />
             <TabContainer />
             {/* children renders TabActivator (invisible) or the notes list page */}
             <div className="hidden">{children}</div>
@@ -44,6 +50,8 @@ export default async function AppLayout({
           <CustomCssInjector />
           <ConflictResolver />
         </SidebarProvider>
+        </AIChatProvider>
+        </OfflineProvider>
         </CardModeProvider>
         </ShortcutsProvider>
       </TabProvider>

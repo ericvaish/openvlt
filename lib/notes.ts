@@ -80,7 +80,7 @@ export function createNote(
 
   fs.mkdirSync(dirPath, { recursive: true })
 
-  const safeTitle = title.replace(/[<>:"/\\|?*]/g, "_")
+  let safeTitle = title.replace(/[<>:"/\\|?*]/g, "_")
   const folderPrefix = parentId
     ? (
         db
@@ -92,8 +92,12 @@ export function createNote(
     : null
 
   // Determine file extension and note type based on title or explicit noteType
-  const isExcalidraw = safeTitle.endsWith(".excalidraw")
+  const isExcalidraw = safeTitle.endsWith(".excalidraw") || noteType === "excalidraw"
   const isCanvas = noteType === "canvas"
+  // Ensure excalidraw files have the .excalidraw suffix in the filename
+  if (isExcalidraw && !safeTitle.endsWith(".excalidraw")) {
+    safeTitle = `${safeTitle}.excalidraw`
+  }
   const ext = isExcalidraw ? ".json" : isCanvas ? ".openvlt" : ".md"
   const resolvedNoteType: NoteType = isExcalidraw
     ? "excalidraw"
@@ -127,7 +131,16 @@ export function createNote(
     document: {},
     settings: {},
   })
-  const fileContent = initialContent ?? (isCanvas ? defaultCanvasContent : `# ${title}\n`)
+  const defaultExcalidrawContent = JSON.stringify({
+    type: "excalidraw",
+    version: 2,
+    source: "openvlt",
+    elements: [],
+    appState: { viewBackgroundColor: "#ffffff" },
+    files: {},
+  })
+  const fileContent = initialContent
+    ?? (isExcalidraw ? defaultExcalidrawContent : isCanvas ? defaultCanvasContent : `# ${title}\n`)
 
   if (isCanvas) {
     // Write as .openvlt ZIP using adm-zip (synchronous)

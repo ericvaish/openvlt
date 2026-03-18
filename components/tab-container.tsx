@@ -12,7 +12,9 @@ import { DatabaseViewPanel } from "@/components/database/database-view-panel"
 import { BookmarksListPanel } from "@/components/bookmarks-list-panel"
 import { SearchPanel } from "@/components/search-panel"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { FileTextIcon, XIcon, RotateCcwIcon } from "lucide-react"
+import { useAIChat } from "@/lib/stores/ai-chat-store"
+import { AIChatSidebar } from "@/components/ai-chat-sidebar"
+import { FileTextIcon, XIcon, RotateCcwIcon, SparklesIcon } from "lucide-react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import {
@@ -81,6 +83,23 @@ function formatClosedTime(timestamp: number): string {
   return `${days}d ago`
 }
 
+function AIChatTrigger() {
+  const { isOpen, toggle } = useAIChat()
+  return (
+    <button
+      onClick={toggle}
+      className={`-mr-1 rounded p-1 transition-colors ${
+        isOpen
+          ? "bg-accent text-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+      }`}
+      title="Toggle AI Chat"
+    >
+      <SparklesIcon className="size-3.5" />
+    </button>
+  )
+}
+
 export function TabContainer() {
   const store = useTabStore()
   const {
@@ -137,6 +156,15 @@ export function TabContainer() {
   }, [])
 
   // Sync URL when active tab changes
+  // Use native replaceState to avoid Next.js intercepting and triggering
+  // soft navigations (RSC refetches) which cause an infinite request loop.
+  const nativeReplaceState = React.useCallback(
+    (...args: Parameters<typeof window.history.replaceState>) => {
+      History.prototype.replaceState.apply(window.history, args)
+    },
+    []
+  )
+
   const specialTabRoutes: Record<string, string> = {
     __all__: "/notes",
     __trash__: "/notes?view=trash",
@@ -151,7 +179,7 @@ export function TabContainer() {
       // No tabs open — go to /notes (empty state)
       const current = window.location.pathname + window.location.search
       if (current !== "/notes") {
-        window.history.replaceState(null, "", "/notes")
+        nativeReplaceState(null, "", "/notes")
       }
       return
     }
@@ -160,9 +188,9 @@ export function TabContainer() {
       ? `/notes?view=database&id=${activeTabId.slice(9, -2)}`
       : specialTabRoutes[activeTabId] ?? `/notes/${activeTabId}`
     if (current !== target) {
-      window.history.replaceState(null, "", target)
+      nativeReplaceState(null, "", target)
     }
-  }, [activeTabId])
+  }, [activeTabId, nativeReplaceState])
 
   // Listen for popstate (browser back/forward)
   React.useEffect(() => {
@@ -277,9 +305,11 @@ export function TabContainer() {
         onDragLeave={() => setDropSide(null)}
         onDrop={handleEmptyDrop}
       >
-        <div className="flex h-9 shrink-0 items-center border-b bg-background px-2">
+        <div className="flex h-9 shrink-0 items-center justify-between border-b bg-background px-2">
           <SidebarTrigger className="-ml-1" />
+          <AIChatTrigger />
         </div>
+        <div className="flex min-h-0 flex-1 overflow-hidden">
         <div
           className={`flex flex-1 flex-col items-center justify-center gap-6 text-center transition-colors ${
             dropSide
@@ -379,6 +409,8 @@ export function TabContainer() {
               )}
             </>
           )}
+        </div>
+        <AIChatSidebar />
         </div>
       </div>
     )
@@ -528,6 +560,9 @@ export function TabContainer() {
             </div>
           </>
         )}
+
+        {/* AI Chat sidebar - sits inside content area, below tab bar */}
+        <AIChatSidebar />
       </div>
     </div>
   )

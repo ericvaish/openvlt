@@ -546,6 +546,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
       // Double-click/double-tap handled at DOM level (see below in requestAnimationFrame)
 
       // Listen for changes and auto-save
+      let lastSavedData: string | null = null
       editor.store.listen(
         () => {
           if (saveTimeoutRef.current) {
@@ -553,28 +554,32 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
           }
 
           saveTimeoutRef.current = setTimeout(async () => {
+            const storeSnapshot = editor.store.getStoreSnapshot()
+            const data = JSON.stringify({
+              type: "openvlt-canvas",
+              version: 1,
+              document: storeSnapshot,
+              settings: {
+                pageSize: pageSizeRef.current,
+                background: backgroundRef.current,
+                pageCount: pageCountRef.current,
+                ruleStyle: ruleStyleRef.current,
+                customSpacing: customSpacingRef.current,
+                pressureSensitivity: pressureSensitivityRef.current,
+              },
+            })
+
+            // Skip save if content hasn't changed
+            if (data === lastSavedData) return
+
             setSaving(true)
             try {
-              const storeSnapshot = editor.store.getStoreSnapshot()
-              const data = JSON.stringify({
-                type: "openvlt-canvas",
-                version: 1,
-                document: storeSnapshot,
-                settings: {
-                  pageSize: pageSizeRef.current,
-                  background: backgroundRef.current,
-                  pageCount: pageCountRef.current,
-                  ruleStyle: ruleStyleRef.current,
-                  customSpacing: customSpacingRef.current,
-                  pressureSensitivity: pressureSensitivityRef.current,
-                },
-              })
-
               await fetch(`/api/notes/${noteId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ content: data }),
               })
+              lastSavedData = data
               window.dispatchEvent(new Event("openvlt:note-saved"))
             } finally {
               setSaving(false)

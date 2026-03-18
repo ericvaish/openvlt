@@ -340,6 +340,18 @@ export function initSchema(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_pending_2fa_user ON pending_2fa_tokens(user_id);
 
+    -- Device heartbeats for presence tracking
+    CREATE TABLE IF NOT EXISTS device_heartbeats (
+      device_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      browser TEXT,
+      os TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_device_heartbeats_user ON device_heartbeats(user_id);
+
     -- Synced blocks: content fragments shared across notes
     CREATE TABLE IF NOT EXISTS synced_blocks (
       id TEXT PRIMARY KEY,

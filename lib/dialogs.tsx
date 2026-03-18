@@ -120,6 +120,8 @@ interface PromptOptions {
   confirmLabel?: string
   cancelLabel?: string
   type?: string
+  /** Return an error string to show below the input, or null/undefined if valid. */
+  validate?: (value: string) => string | null | undefined
 }
 
 export function promptDialog(
@@ -146,12 +148,15 @@ export function promptDialog(
       const [value, setValue] = React.useState(opts.defaultValue || "")
       const inputRef = React.useRef<HTMLInputElement>(null)
 
+      const validationError = opts.validate ? opts.validate(value) : null
+
       React.useEffect(() => {
         // Focus and select on open
         requestAnimationFrame(() => inputRef.current?.select())
       }, [])
 
       function handleSubmit() {
+        if (validationError) return
         setOpen(false)
         resolve(value)
         cleanup()
@@ -189,14 +194,17 @@ export function promptDialog(
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={opts.placeholder}
-                className="mb-4"
+                className={validationError ? "mb-1" : "mb-4"}
                 autoFocus
               />
+              {validationError && (
+                <p className="mb-3 text-sm text-destructive">{validationError}</p>
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={handleCancel}>
                   {opts.cancelLabel || "Cancel"}
                 </Button>
-                <Button type="submit">
+                <Button type="submit" disabled={!!validationError}>
                   {opts.confirmLabel || "OK"}
                 </Button>
               </DialogFooter>

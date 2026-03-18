@@ -1,0 +1,1034 @@
+"use client"
+
+import * as React from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  PlusIcon,
+  TrashIcon,
+  CopyIcon,
+  CheckIcon,
+  ServerIcon,
+  MessageSquareIcon,
+  EyeIcon,
+  EyeOffIcon,
+  CircleCheckIcon,
+  LoaderIcon,
+  RefreshCwIcon,
+  ExternalLinkIcon,
+} from "lucide-react"
+import type {
+  AIApiToken,
+  AIConfig,
+  AIProviderType,
+  AIProviderKeyStatus,
+} from "@/types"
+import {
+  OpenIn,
+  OpenInTrigger,
+  OpenInContent,
+  OpenInLabel,
+  OpenInSeparator,
+  OpenInClaude,
+  OpenInChatGPT,
+  OpenInCursor,
+} from "@/components/ai/open-in-chat"
+// Custom tabs removed - using inline implementation below
+
+function SectionCard({
+  title,
+  description,
+  icon: Icon,
+  children,
+}: {
+  title: string
+  description?: string
+  icon?: React.ElementType
+  children: React.ReactNode
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2.5">
+        {Icon && (
+          <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
+            <Icon className="size-4 text-muted-foreground" />
+          </div>
+        )}
+        <div>
+          <h3 className="text-sm font-semibold">{title}</h3>
+          {description && (
+            <p className="text-xs text-muted-foreground">{description}</p>
+          )}
+        </div>
+      </div>
+      <div className="rounded-lg border p-4">{children}</div>
+    </section>
+  )
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic (Claude)",
+  openrouter: "OpenRouter",
+  codex: "ChatGPT (via Codex CLI)",
+  "claude-code": "Claude Code",
+}
+
+const PROVIDER_DESCRIPTIONS: Record<string, string> = {
+  codex: "Use your ChatGPT Plus/Pro subscription. No per-token cost.",
+  openai: "Pay-per-token via OpenAI API.",
+  anthropic: "Pay-per-token via Anthropic API.",
+  openrouter: "Access 300+ models. Pay-per-token via OpenRouter.",
+  "claude-code":
+    "Use your Claude Max subscription. No per-token cost.",
+}
+
+const PROVIDER_PLACEHOLDERS: Record<string, string> = {
+  openai: "sk-...",
+  anthropic: "sk-ant-...",
+  openrouter: "sk-or-...",
+}
+
+interface CodexStatus {
+  installed: boolean
+  authenticated: boolean
+  hasAccountId: boolean
+}
+
+function CodexSetupGuide({ onReady }: { onReady: () => void }) {
+  const [status, setStatus] = React.useState<CodexStatus | null>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [authUrl, setAuthUrl] = React.useState<string | null>(null)
+  const [generatingUrl, setGeneratingUrl] = React.useState(false)
+  const [copiedUrl, setCopiedUrl] = React.useState(false)
+  const [polling, setPolling] = React.useState(false)
+
+  const checkStatus = React.useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/ai/codex-status")
+      if (res.ok) {
+        const data = await res.json()
+        setStatus(data)
+        if (data.authenticated) {
+          onReady()
+          setAuthUrl(null)
+          setPolling(false)
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [onReady])
+
+  React.useEffect(() => {
+    checkStatus()
+  }, [checkStatus])
+
+  // Poll for auth completion while waiting for the user to sign in
+  React.useEffect(() => {
+    if (!polling) return
+    const interval = setInterval(() => {
+      checkStatus()
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [polling, checkStatus])
+
+  const handleGenerateLink = async () => {
+    setGeneratingUrl(true)
+    try {
+      const res = await fetch("/api/ai/codex-auth", { method: "POST" })
+      if (!res.ok) {
+        setGeneratingUrl(false)
+        return
+      }
+      const data = await res.json()
+      setAuthUrl(data.authUrl)
+      setPolling(true)
+    } catch {
+      // ignore
+    } finally {
+      setGeneratingUrl(false)
+    }
+  }
+
+  const copyAuthUrl = () => {
+    if (!authUrl) return
+    navigator.clipboard.writeText(authUrl)
+    setCopiedUrl(true)
+    setTimeout(() => setCopiedUrl(false), 2000)
+  }
+
+  const isAuthenticated = status?.authenticated ?? false
+
+  return (
+    <div className="space-y-4">
+      {isAuthenticated ? (
+        // Connected state
+        <div className="rounded-md border border-green-500/20 bg-green-500/5 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <CircleCheckIcon className="size-5 text-green-500" />
+              <div>
+                <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                  Connected to ChatGPT
+                </p>
+                <p className="text-xs text-green-600/70 dark:text-green-400/60">
+                  Using your ChatGPT subscription. No per-token charges.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={checkStatus}
+              disabled={loading}
+            >
+              {loading ? (
+                <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
+              ) : (
+                <RefreshCwIcon className="mr-1.5 size-3.5" />
+              )}
+              Refresh
+            </Button>
+          </div>
+        </div>
+      ) : (
+        // Not connected state
+        <div className="space-y-4">
+          <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-4">
+            <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
+              Use your ChatGPT subscription
+            </p>
+            <p className="mt-1 text-xs text-blue-600/80 dark:text-blue-400/70">
+              Sign in with your ChatGPT Plus or Pro account to use AI chat
+              at no extra cost. Your subscription covers usage.
+            </p>
+          </div>
+
+          {!authUrl ? (
+            <Button
+              onClick={handleGenerateLink}
+              disabled={generatingUrl || loading}
+              className="gap-2"
+            >
+              {generatingUrl ? (
+                <LoaderIcon className="size-4 animate-spin" />
+              ) : (
+                <ExternalLinkIcon className="size-4" />
+              )}
+              {generatingUrl
+                ? "Generating sign-in link..."
+                : "Log in to ChatGPT"}
+            </Button>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3">
+                <p className="mb-2 text-sm font-medium">
+                  Open this link in any browser where you are signed in to
+                  ChatGPT:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded bg-muted px-2 py-1.5 text-xs">
+                    {authUrl.slice(0, 80)}...
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 gap-1.5"
+                    onClick={copyAuthUrl}
+                  >
+                    {copiedUrl ? (
+                      <CheckIcon className="size-3.5 text-green-500" />
+                    ) : (
+                      <CopyIcon className="size-3.5" />
+                    )}
+                    {copiedUrl ? "Copied" : "Copy link"}
+                  </Button>
+                </div>
+              </div>
+              {polling && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderIcon className="size-3.5 animate-spin" />
+                  Waiting for you to sign in... This page will update
+                  automatically.
+                </div>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setAuthUrl(null)
+                  setPolling(false)
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          <div className="rounded-md bg-muted/50 p-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              How it works
+            </p>
+            <ol className="mt-1.5 list-inside list-decimal space-y-1 text-xs text-muted-foreground/80">
+              <li>Click "Log in to ChatGPT" to generate a sign-in link</li>
+              <li>
+                Copy the link and open it in the browser where you are signed
+                in to your OpenAI/ChatGPT account
+              </li>
+              <li>Sign in and authorize openvlt</li>
+              <li>
+                This page will update automatically once connected
+              </li>
+            </ol>
+          </div>
+
+          <div className="rounded-md bg-muted/50 p-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              Requirements
+            </p>
+            <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground/80">
+              <li>
+                An active ChatGPT Plus ($20/month) or Pro ($200/month) subscription
+              </li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface ClaudeCodeStatus {
+  installed: boolean
+  authenticated: boolean
+}
+
+function ClaudeCodeSetupGuide({ onReady }: { onReady: () => void }) {
+  const [status, setStatus] = React.useState<ClaudeCodeStatus | null>(null)
+  const [loading, setLoading] = React.useState(true)
+
+  const checkStatus = React.useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/ai/claude-code-status")
+      if (res.ok) {
+        const data = await res.json()
+        setStatus(data)
+        if (data.authenticated) {
+          onReady()
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [onReady])
+
+  React.useEffect(() => {
+    checkStatus()
+  }, [checkStatus])
+
+  const isAuthenticated = status?.authenticated ?? false
+  const isInstalled = status?.installed ?? false
+
+  return (
+    <div className="space-y-4">
+      {isAuthenticated ? (
+        <div className="rounded-md border border-green-500/20 bg-green-500/5 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <CircleCheckIcon className="size-5 text-green-500" />
+              <div>
+                <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                  Claude Code connected
+                </p>
+                <p className="text-xs text-green-600/70 dark:text-green-400/60">
+                  Using your Max subscription. No per-token charges.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={checkStatus}
+              disabled={loading}
+            >
+              {loading ? (
+                <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
+              ) : (
+                <RefreshCwIcon className="mr-1.5 size-3.5" />
+              )}
+              Refresh
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-4">
+            <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
+              {isInstalled
+                ? "Claude Code is installed but not authenticated"
+                : "Claude Code not detected"}
+            </p>
+            <p className="mt-1 text-xs text-blue-600/80 dark:text-blue-400/70">
+              {isInstalled
+                ? "Run `claude login` in your terminal to authenticate."
+                : "Claude Code is bundled with openvlt. Run `claude login` in your terminal to authenticate with your Max subscription."}
+            </p>
+          </div>
+
+          <div className="rounded-md bg-muted/50 p-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              How to connect
+            </p>
+            <ol className="mt-1.5 list-inside list-decimal space-y-1 text-xs text-muted-foreground/80">
+              <li>
+                Run{" "}
+                <code className="rounded bg-muted px-1 py-0.5">
+                  claude login
+                </code>{" "}
+                in your terminal
+              </li>
+              <li>Sign in with your Anthropic account</li>
+              <li>Come back here and click "Check again"</li>
+            </ol>
+            <p className="mt-2 text-xs text-muted-foreground/60">
+              Requires an active Claude Max subscription.
+            </p>
+          </div>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={checkStatus}
+            disabled={loading}
+          >
+            {loading ? (
+              <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
+            ) : (
+              <RefreshCwIcon className="mr-1.5 size-3.5" />
+            )}
+            Check again
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Providers that need API keys (not Codex or Claude Code which have their own auth) */
+const API_KEY_PROVIDERS: AIProviderType[] = [
+  "openai",
+  "anthropic",
+  "openrouter",
+]
+
+export function AISettingsTab() {
+  const [config, setConfig] = React.useState<AIConfig>({
+    mcpEnabled: false,
+    chatEnabled: false,
+    chatProvider: null,
+    chatProviders: [],
+    chatModel: null,
+  })
+  const [tokens, setTokens] = React.useState<AIApiToken[]>([])
+  const [keys, setKeys] = React.useState<AIProviderKeyStatus[]>([])
+  const [newTokenName, setNewTokenName] = React.useState("")
+  const [createdToken, setCreatedToken] = React.useState<string | null>(null)
+  const [copied, setCopied] = React.useState(false)
+  const [keyInputs, setKeyInputs] = React.useState<Record<string, string>>({})
+  const [keyVisibility, setKeyVisibility] = React.useState<
+    Record<string, boolean>
+  >({})
+  const [showSetup, setShowSetup] = React.useState(false)
+
+  React.useEffect(() => {
+    fetch("/api/ai/config")
+      .then((r) => r.json())
+      .then(setConfig)
+      .catch(() => {})
+    fetch("/api/ai/tokens")
+      .then((r) => r.json())
+      .then(setTokens)
+      .catch(() => {})
+    fetch("/api/ai/keys")
+      .then((r) => r.json())
+      .then(setKeys)
+      .catch(() => {})
+  }, [])
+
+  const updateConfig = async (updates: Partial<AIConfig>) => {
+    const res = await fetch("/api/ai/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setConfig(data)
+    }
+  }
+
+  const toggleProvider = (provider: AIProviderType) => {
+    const current = config.chatProviders || []
+    const next = current.includes(provider)
+      ? current.filter((p) => p !== provider)
+      : [...current, provider]
+    updateConfig({ chatProviders: next })
+  }
+
+  const createToken = async () => {
+    if (!newTokenName.trim()) return
+    const res = await fetch("/api/ai/tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newTokenName.trim() }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setCreatedToken(data.token)
+      setNewTokenName("")
+      const tokensRes = await fetch("/api/ai/tokens")
+      if (tokensRes.ok) setTokens(await tokensRes.json())
+    }
+  }
+
+  const revokeToken = async (id: string) => {
+    await fetch(`/api/ai/tokens/${id}`, { method: "DELETE" })
+    setTokens((t) => t.filter((tk) => tk.id !== id))
+  }
+
+  const saveKey = async (provider: AIProviderType) => {
+    const apiKey = keyInputs[provider]
+    if (!apiKey?.trim()) return
+    const res = await fetch("/api/ai/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, apiKey: apiKey.trim() }),
+    })
+    if (res.ok) {
+      setKeyInputs((k) => ({ ...k, [provider]: "" }))
+      const keysRes = await fetch("/api/ai/keys")
+      if (keysRes.ok) setKeys(await keysRes.json())
+    }
+  }
+
+  const removeKey = async (provider: AIProviderType) => {
+    await fetch(`/api/ai/keys/${provider}`, { method: "DELETE" })
+    const keysRes = await fetch("/api/ai/keys")
+    if (keysRes.ok) setKeys(await keysRes.json())
+  }
+
+  const copyToken = () => {
+    if (!createdToken) return
+    navigator.clipboard.writeText(createdToken)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const isKeyConfigured = (provider: string) =>
+    keys.find((k) => k.provider === provider)?.configured ?? false
+
+  const enabledProviders = config.chatProviders || []
+
+  // Persist AI sub-tab in localStorage
+  const [activeTab, setActiveTab] = React.useState(() => {
+    if (typeof window === "undefined") return "chat"
+    return localStorage.getItem("openvlt:ai-settings-tab") || "chat"
+  })
+  const setActiveTabPersist = React.useCallback((tab: string) => {
+    setActiveTab(tab)
+    localStorage.setItem("openvlt:ai-settings-tab", tab)
+  }, [])
+
+  const tabs = [
+    { value: "chat", label: "Chat" },
+    { value: "subscriptions", label: "Subscriptions" },
+    { value: "api-keys", label: "API Keys" },
+    { value: "mcp", label: "MCP" },
+    { value: "tools", label: "Tools" },
+  ]
+
+  return (
+    <div className="space-y-4">
+      <div className="flex h-8 items-stretch overflow-x-auto rounded-md border border-border/60 bg-background/40">
+        {tabs.map((tab, i) => {
+          const active = activeTab === tab.value
+          return (
+            <button
+              key={tab.value}
+              onClick={() => setActiveTabPersist(tab.value)}
+              className={`relative shrink-0 px-3 text-xs font-medium tracking-wide transition-colors sm:flex-1 sm:px-0 ${
+                i > 0 ? "border-l border-border/40" : ""
+              } ${
+                active
+                  ? "bg-foreground/10 text-foreground"
+                  : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground/80"
+              }`}
+            >
+              {active && (
+                <span className="absolute inset-x-0 bottom-0 h-0.5 bg-primary" />
+              )}
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── Chat Tab ── */}
+      {activeTab === "chat" && (
+        <SectionCard
+          title="AI Chat"
+          description="Chat with AI about your notes from the right sidebar."
+          icon={MessageSquareIcon}
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Enable AI chat</span>
+              <Button
+                variant={config.chatEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={() =>
+                  updateConfig({ chatEnabled: !config.chatEnabled })
+                }
+              >
+                {config.chatEnabled ? "Enabled" : "Disabled"}
+              </Button>
+            </div>
+            {config.chatEnabled && (
+              <p className="text-xs text-muted-foreground">
+                Configure providers in the Subscriptions or API Keys tabs, then select a model in the chat sidebar.
+              </p>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* ── Subscriptions Tab ── */}
+      {activeTab === "subscriptions" && (
+        <SectionCard
+          title="Subscriptions"
+          description="Use your existing AI subscriptions. No per-token cost."
+        >
+          <div className="space-y-3">
+            {/* ChatGPT (Codex CLI) */}
+            {(() => {
+              const isEnabled = enabledProviders.includes("codex")
+              return (
+                <div
+                  className={`overflow-hidden rounded-lg border transition-colors ${
+                    isEnabled ? "border-green-500/20" : "border-border"
+                  }`}
+                >
+                  <label
+                    className={`flex cursor-pointer items-center gap-3 px-3.5 py-3 transition-colors hover:bg-muted/50 ${
+                      isEnabled ? "bg-green-500/5" : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isEnabled}
+                      onChange={() => toggleProvider("codex")}
+                      className="size-3.5 rounded"
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium">ChatGPT</span>
+                      <p className="text-xs text-muted-foreground">
+                        ChatGPT Plus or Pro subscription
+                      </p>
+                    </div>
+                  </label>
+                  {isEnabled && (
+                    <div className="border-t border-green-500/10 px-3.5 py-3">
+                      <CodexSetupGuide onReady={() => {}} />
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Claude Code */}
+            {(() => {
+              const isEnabled = enabledProviders.includes("claude-code")
+              return (
+                <div
+                  className={`overflow-hidden rounded-lg border transition-colors ${
+                    isEnabled ? "border-green-500/20" : "border-border"
+                  }`}
+                >
+                  <label
+                    className={`flex cursor-pointer items-center gap-3 px-3.5 py-3 transition-colors hover:bg-muted/50 ${
+                      isEnabled ? "bg-green-500/5" : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isEnabled}
+                      onChange={() => toggleProvider("claude-code")}
+                      className="size-3.5 rounded"
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium">Claude</span>
+                      <p className="text-xs text-muted-foreground">
+                        Claude Max subscription
+                      </p>
+                    </div>
+                  </label>
+                  {isEnabled && (
+                    <div className="border-t border-green-500/10 px-3.5 py-3">
+                      <ClaudeCodeSetupGuide onReady={() => {}} />
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* ── API Keys Tab ── */}
+      {activeTab === "api-keys" && (
+        <SectionCard
+          title="API Keys"
+          description="Pay-per-token. You are billed directly by the provider."
+        >
+          <div className="space-y-3">
+            {(
+              ["openai", "anthropic", "openrouter"] as AIProviderType[]
+            ).map((provider) => {
+              const isEnabled = enabledProviders.includes(provider)
+              const hasKey = isKeyConfigured(provider)
+              return (
+                <div
+                  key={provider}
+                  className={`overflow-hidden rounded-lg border transition-colors ${
+                    isEnabled
+                      ? hasKey
+                        ? "border-green-500/20"
+                        : "border-primary/20"
+                      : "border-border"
+                  }`}
+                >
+                  <label
+                    className={`flex cursor-pointer items-center gap-3 px-3.5 py-3 transition-colors hover:bg-muted/50 ${
+                      isEnabled
+                        ? hasKey
+                          ? "bg-green-500/5"
+                          : "bg-primary/5"
+                        : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isEnabled}
+                      onChange={() => toggleProvider(provider)}
+                      className="size-3.5 rounded"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">
+                          {PROVIDER_LABELS[provider]}
+                        </span>
+                        {hasKey ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-1.5 py-0.5 text-xs text-green-600 dark:text-green-400">
+                            <CircleCheckIcon className="size-3" />
+                            Connected
+                          </span>
+                        ) : (
+                          isEnabled && (
+                            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600 dark:text-amber-400">
+                              Needs key
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {PROVIDER_DESCRIPTIONS[provider]}
+                      </p>
+                    </div>
+                  </label>
+                  {isEnabled && (
+                    <div className="border-t px-3.5 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <Input
+                            type={
+                              keyVisibility[provider] ? "text" : "password"
+                            }
+                            value={keyInputs[provider] || ""}
+                            onChange={(e) =>
+                              setKeyInputs((k) => ({
+                                ...k,
+                                [provider]: e.target.value,
+                              }))
+                            }
+                            placeholder={
+                              hasKey
+                                ? "Key saved. Enter new key to replace."
+                                : PROVIDER_PLACEHOLDERS[provider] ||
+                                  "Enter API key"
+                            }
+                            className="pr-8 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setKeyVisibility((v) => ({
+                                ...v,
+                                [provider]: !v[provider],
+                              }))
+                            }
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            {keyVisibility[provider] ? (
+                              <EyeOffIcon className="size-3.5" />
+                            ) : (
+                              <EyeIcon className="size-3.5" />
+                            )}
+                          </button>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => saveKey(provider)}
+                          disabled={!keyInputs[provider]?.trim()}
+                        >
+                          Save
+                        </Button>
+                        {hasKey && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => removeKey(provider)}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* ── MCP Tab ── */}
+      {activeTab === "mcp" && (
+        <SectionCard
+          title="MCP Server"
+          description="Connect AI agents like Claude Code, Claude Desktop, or ChatGPT to your notes."
+          icon={ServerIcon}
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Enable MCP access</span>
+              <Button
+                variant={config.mcpEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={() =>
+                  updateConfig({ mcpEnabled: !config.mcpEnabled })
+                }
+              >
+                {config.mcpEnabled ? "Enabled" : "Disabled"}
+              </Button>
+            </div>
+
+            {config.mcpEnabled && (
+              <>
+                {/* Token management */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={newTokenName}
+                      onChange={(e) => setNewTokenName(e.target.value)}
+                      placeholder="Token name (e.g. Claude Code)"
+                      className="text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") createToken()
+                      }}
+                    />
+                    <Button size="sm" onClick={createToken}>
+                      <PlusIcon className="mr-1 size-3.5" />
+                      Create
+                    </Button>
+                  </div>
+
+                  {createdToken && (
+                    <div className="rounded-md border border-green-500/30 bg-green-500/5 p-3">
+                      <p className="mb-2 text-xs font-medium text-green-600 dark:text-green-400">
+                        Token created. Copy it now; it will not be shown again.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 break-all rounded bg-muted px-2 py-1 text-xs">
+                          {createdToken}
+                        </code>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          onClick={copyToken}
+                        >
+                          {copied ? (
+                            <CheckIcon className="size-3.5 text-green-500" />
+                          ) : (
+                            <CopyIcon className="size-3.5" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {tokens.length > 0 && (
+                    <div className="space-y-2">
+                      {tokens.map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between rounded-md border px-3 py-2"
+                        >
+                          <div>
+                            <span className="text-sm font-medium">
+                              {t.name}
+                            </span>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {t.tokenPrefix}...
+                            </span>
+                            {t.lastUsedAt && (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                Last used:{" "}
+                                {new Date(t.lastUsedAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => revokeToken(t.id)}
+                          >
+                            <TrashIcon className="size-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Setup instructions */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setShowSetup(!showSetup)}
+                      className="text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      {showSetup ? "Hide" : "Show"} setup instructions
+                    </button>
+                    <OpenIn
+                      query={`Set up the openvlt MCP server for me. Run this command:\n\nclaude mcp add openvlt -- node ${typeof window !== "undefined" ? window.location.origin : ""}/bin/openvlt-mcp\n\nThen set the environment variable OPENVLT_API_TOKEN to connect to my openvlt instance at ${typeof window !== "undefined" ? window.location.origin : ""}`}
+                    >
+                      <OpenInTrigger>
+                        <Button variant="outline" size="sm">
+                          <ExternalLinkIcon className="mr-1 size-3.5" />
+                          Set up with AI
+                        </Button>
+                      </OpenInTrigger>
+                      <OpenInContent>
+                        <OpenInLabel>Set up MCP with...</OpenInLabel>
+                        <OpenInSeparator />
+                        <OpenInClaude />
+                        <OpenInChatGPT />
+                        <OpenInCursor />
+                      </OpenInContent>
+                    </OpenIn>
+                  </div>
+                  {showSetup && (
+                    <div className="mt-3 space-y-4 text-sm">
+                      <div>
+                        <p className="mb-1 font-medium">Claude Desktop</p>
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          Add to ~/.claude/claude_desktop_config.json:
+                        </p>
+                        <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
+{`{
+  "mcpServers": {
+    "openvlt": {
+      "command": "node",
+      "args": ["<path-to-openvlt>/bin/openvlt-mcp"],
+      "env": {
+        "OPENVLT_API_TOKEN": "<your-token>",
+        "OPENVLT_DB_PATH": "<path-to-data>/.openvlt/openvlt.db"
+      }
+    }
+  }
+}`}
+                        </pre>
+                      </div>
+                      <div>
+                        <p className="mb-1 font-medium">Claude Code</p>
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          Run in your terminal:
+                        </p>
+                        <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
+{`claude mcp add openvlt -- node <path-to-openvlt>/bin/openvlt-mcp`}
+                        </pre>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Then set the OPENVLT_API_TOKEN environment variable.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* ── Tools Tab ── */}
+      {activeTab === "tools" && (
+        <SectionCard
+          title="Tools"
+          description="Manage which tools the AI agent can use."
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              The AI agent has access to the following tools when chatting with your notes:
+            </p>
+            <div className="space-y-2">
+              {[
+                { name: "search_notes", desc: "Full-text search across all notes" },
+                { name: "list_notes", desc: "List all notes in the vault" },
+                { name: "get_note", desc: "Read a note's content" },
+                { name: "create_note", desc: "Create a new note" },
+                { name: "update_note", desc: "Edit an existing note" },
+                { name: "delete_note", desc: "Move a note to trash" },
+                { name: "get_excalidraw", desc: "Read an excalidraw drawing" },
+                { name: "draw_excalidraw", desc: "Add shapes to a drawing" },
+                { name: "list_folders", desc: "List folder structure" },
+                { name: "list_tags", desc: "List all tags" },
+                { name: "web_search", desc: "Search the web (provider-dependent)" },
+              ].map((tool) => (
+                <div
+                  key={tool.name}
+                  className="flex items-center justify-between rounded-md border px-3 py-2"
+                >
+                  <div>
+                    <span className="font-mono text-sm">{tool.name}</span>
+                    <p className="text-xs text-muted-foreground">{tool.desc}</p>
+                  </div>
+                  <span className="text-xs text-green-600 dark:text-green-400">Active</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+    </div>
+  )
+}

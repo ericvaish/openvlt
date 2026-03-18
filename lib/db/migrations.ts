@@ -710,6 +710,125 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 15,
+    description: "Add device heartbeat tracking",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS device_heartbeats (
+          device_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL,
+          browser TEXT,
+          os TEXT,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_device_heartbeats_user ON device_heartbeats(user_id);
+      `)
+    },
+  },
+  {
+    version: 16,
+    description: "Add AI integration tables",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS ai_api_tokens (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          vault_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          token_hash TEXT NOT NULL,
+          token_prefix TEXT NOT NULL,
+          last_used_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_api_tokens_user ON ai_api_tokens(user_id);
+
+        CREATE TABLE IF NOT EXISTS ai_provider_keys (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          provider TEXT NOT NULL,
+          api_key_enc TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(user_id, provider)
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_config (
+          user_id TEXT PRIMARY KEY,
+          mcp_enabled INTEGER NOT NULL DEFAULT 0,
+          chat_enabled INTEGER NOT NULL DEFAULT 0,
+          chat_provider TEXT,
+          chat_model TEXT,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+      `)
+    },
+  },
+  {
+    version: 17,
+    description: "Add note view state table for viewport persistence",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS note_view_state (
+          user_id TEXT NOT NULL,
+          note_id TEXT NOT NULL,
+          scroll_x REAL NOT NULL DEFAULT 0,
+          scroll_y REAL NOT NULL DEFAULT 0,
+          zoom REAL NOT NULL DEFAULT 1,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (user_id, note_id),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
+        );
+      `)
+    },
+  },
+  {
+    version: 18,
+    description: "Add AI chat conversations and messages tables",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS ai_conversations (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          vault_id TEXT NOT NULL,
+          title TEXT,
+          provider TEXT,
+          model TEXT,
+          status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'generating', 'completed', 'error')),
+          usage_input_tokens INTEGER,
+          usage_output_tokens INTEGER,
+          usage_reasoning_tokens INTEGER,
+          usage_cached_tokens INTEGER,
+          error TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_vault ON ai_conversations(user_id, vault_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS ai_messages (
+          id TEXT PRIMARY KEY,
+          conversation_id TEXT NOT NULL,
+          role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system', 'tool')),
+          content TEXT NOT NULL DEFAULT '',
+          reasoning TEXT,
+          tool_calls TEXT,
+          tool_call_id TEXT,
+          attachments TEXT,
+          seq INTEGER NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_messages_conv ON ai_messages(conversation_id, seq);
+      `)
+    },
+  },
 ]
 
 export function runMigrations(db: Database.Database) {

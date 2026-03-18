@@ -2,8 +2,30 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "katex/dist/katex.min.css";
+@import "streamdown/styles.css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
+
+/* Canvas background: visible on iOS pull-to-refresh and scroll bounce */
+html,
+body {
+  background-color: var(--background);
+}
+
+/* Force text wrapping in AI chat sidebar at any width */
+[data-ai-chat] * {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Multi-select / active-item highlight in sidebar tree.
+   The double attribute selector [data-active][data-sidebar-selected]
+   has higher specificity than the sidebar component's single [data-active],
+   so it naturally overrides bg-sidebar-accent without needing !important. */
+[data-active][data-sidebar-selected] {
+  background-color: oklch(from var(--primary) l c h / 0.1);
+}
 
 /* Keep sidebar above main content in split-screen / horizontal overflow */
 [data-slot="sidebar-container"] {
