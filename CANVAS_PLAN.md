@@ -10,7 +10,7 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - **Text input**: Model C — invisible text regions, borderless until selected
 - **Note types**: Markdown (`.md`) and Canvas (`.openvlt`) coexist
 - **Input**: Apple Pencil/stylus = active tool, finger = pan/zoom
-- **Ink rendering**: Currently custom InkLayer canvas — **planned migration to tldraw-native SVG rendering** (see Phase 11)
+- **Ink rendering**: tldraw-native SVG rendering (migrated from custom InkLayer canvas in Phase 11)
 
 ---
 
@@ -179,40 +179,26 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 
 ---
 
-## Phase 11: Migration to tldraw-native rendering (NEXT)
+## Phase 11: Migration to tldraw-native rendering ✅
 
-**Problem**: The custom InkLayer (HTML5 Canvas) redraws all strokes on every camera change, causing:
-- Noticeable lag during panning/zooming, especially with many strokes
-- Blurry strokes after iPad idle (Safari canvas memory optimization)
-- White square artifacts from invisible tldraw shape containers
-- Complex workarounds (rAF throttling, viewport culling, stroke caching, CSS transform hacks)
-- Fundamentally limited by Canvas 2D — can never match native app smoothness
-
-**Observation**: tldraw's own website renders draw strokes perfectly smooth at 120fps. Their built-in draw shapes use SVG paths rendered within tldraw's own pipeline — GPU-accelerated, no custom canvas needed. Panning is just moving DOM elements.
-
-**Root cause**: The original decision to use a custom InkLayer was based on the assumption that tldraw's CSS transforms cause blurry strokes. But tldraw's own site proves this isn't true — the blurriness was likely due to our implementation, not tldraw.
-
-**Plan**:
-- [ ] Make handwrite shape `component()` render an actual SVG path (same bezier curves) instead of an invisible div
-- [ ] Remove the InkLayer canvas entirely
-- [ ] Keep wet ink canvas only for real-time drawing feedback (cleared on pen lift)
-- [ ] tldraw handles all rendering, panning, zooming, selection, erasing natively
-- [ ] Test pressure-sensitive rendering via SVG `stroke-width` variation or multiple path segments
-- [ ] If SVG can't do variable-width strokes, investigate tldraw's built-in draw tool approach
-- [ ] Migrate existing handwrite shapes (data format stays the same, just rendering changes)
-- [ ] Expected result: smooth 120fps panning, no idle blurring, no white squares, no custom redraw code
-
-**Fallback**: If tldraw-native SVG rendering has quality issues, consider:
-- Rendering strokes as static raster images (cached bitmaps) after completion
-- Only redrawing the active stroke, all others are cached images
-- This gives native-like pan performance while keeping our custom rendering quality
+- [x] Rewrote `HandwriteShapeUtil.component()` to render visible SVG paths instead of invisible div
+- [x] Pressure strokes use `perfect-freehand` (`getStroke`) → filled SVG `<path>` outline
+- [x] Non-pressure strokes use `buildSmoothPath()` → stroked SVG `<path>` with uniform width
+- [x] Highlighter rendering: 35% opacity, minimum width of 12
+- [x] Updated `indicator()` to use filled outline path for pressure strokes
+- [x] Added `xs: 0.75` to `SIZE_MAP` in handwrite-shape.tsx (was missing, existed in InkLayer)
+- [x] Reduced wet ink rAF delay from 2 frames to 1 (tldraw renders SVG immediately)
+- [x] Removed InkLayer component, import, ref, `isDrawing` state, and all `redraw()` calls from canvas-editor.tsx
+- [x] Deleted `components/canvas/ink-layer.tsx`
+- [x] Data format unchanged — existing handwrite shapes render with new SVG pipeline automatically
+- [x] tldraw handles all rendering, panning, zooming, selection, erasing natively
 
 ---
 
 ## Known Limitations
 
 - **Text block resolution**: Text inside tldraw shapes is rendered at CSS-transform resolution (can be blurry when zoomed in). Fixing requires rendering text as HTML overlay outside tldraw, which is a significant architectural change.
-- **Panning performance**: InkLayer redraws all strokes every frame. With many strokes, this causes noticeable lag. Phase 11 migration to tldraw-native rendering should fix this.
+- **Panning performance**: ~~InkLayer redraws all strokes every frame~~ Fixed in Phase 11 — strokes now render as tldraw-native SVG paths.
 - **iPad breakpoint**: Tailwind `md:hidden` (768px) doesn't work reliably on iPad Safari. Using `@media (min-width: 600px)` inline style instead.
 
 ## Future Enhancements (Post-MVP)
@@ -224,4 +210,3 @@ A hybrid canvas + document experience (like OneNote/GoodNotes) where markdown te
 - [ ] Pencil (textured) pen tool
 - [ ] Import Excalidraw notes into canvas system
 - [ ] Collaboration / real-time sync for canvas notes
-- [ ] Stroke rasterization cache for pan performance (fallback if Phase 11 doesn't work)

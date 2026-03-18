@@ -23,7 +23,6 @@ import { LassoTool } from "@/lib/canvas/tools/lasso-tool"
 import { PixelEraserTool } from "@/lib/canvas/tools/pixel-eraser-tool"
 import { CanvasToolbarInline } from "@/components/canvas/canvas-toolbar-inline"
 import { CanvasBackground } from "@/components/canvas/canvas-background"
-import { InkLayer, type InkLayerHandle } from "@/components/canvas/ink-layer"
 import {
   type PageSizeId,
   type BackgroundPattern,
@@ -192,7 +191,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
 
       requestAnimationFrame(() => {
         if (signal.aborted) return
-        const container = document.querySelector(".canvas-editor-wrapper .tl-container")
+        const container = editor.getContainer()
         if (!container) return
 
         let touchStartX = 0
@@ -284,7 +283,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
             const dx = (pe.clientX - touchStartX) / zoom
             const dy = (pe.clientY - touchStartY) / zoom
             editor.setCamera({ x: cameraStartX + dx, y: cameraStartY + dy, z: zoom })
-            inkLayerRef.current?.redraw()
+
 
             // Track velocity for inertia
             const now = performance.now()
@@ -316,7 +315,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
               y: (curMidY - pinchSbY) / newZoom - anchorY,
               z: newZoom,
             })
-            inkLayerRef.current?.redraw()
+
           }
         }, { capture: true, signal })
 
@@ -405,7 +404,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
                   y: curCam.y + (vy * dt) / zoom,
                   z: zoom,
                 })
-                inkLayerRef.current?.redraw()
+    
                 inertiaRaf = requestAnimationFrame(animate)
               }
               inertiaRaf = requestAnimationFrame(animate)
@@ -506,18 +505,14 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         },
       })
 
-      // Track camera for page button overlay and ink layer
+      // Track camera for page button overlay
       editor.store.listen(
         () => {
           const cam = editor.getCamera()
           setCamera({ x: cam.x, y: cam.y, z: cam.z ?? 1 })
-          // Redraw ink layer on camera move (pan/zoom)
-          inkLayerRef.current?.redraw()
-          // Check if handwrite tool is actively drawing
+          // Clear wet ink when camera moves and not drawing
           const tool = editor.root.getCurrent()?.getCurrent()
           const drawing = tool?.isDrawing === true
-          setIsDrawing(drawing)
-          // Clear wet ink when camera moves and not drawing
           if (!drawing && tool?.clearWetInk) {
             tool.clearWetInk()
           }
@@ -811,9 +806,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
     React.useState<TextNoteShape | null>(null)
   const [defaultSaved, setDefaultSaved] = React.useState(false)
   const [camera, setCamera] = React.useState({ x: 0, y: 0, z: 1 })
-  const [isDrawing, setIsDrawing] = React.useState(false)
   const [confirmAction, setConfirmAction] = React.useState<{ type: "clear" | "delete"; pageIndex: number } | null>(null)
-  const inkLayerRef = React.useRef<InkLayerHandle>(null)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const addDebugRef = React.useRef((_msg: string) => {})
 
@@ -1227,20 +1220,13 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
       )}
       <style jsx global>{`
         .canvas-editor-wrapper .tl-shape[data-shape-type="handwrite"] {
-          contain: none !important;
           background: none !important;
           box-shadow: none !important;
-        }
-        .canvas-editor-wrapper .tl-shape[data-shape-type="handwrite"] svg {
-          overflow: visible !important;
         }
         .canvas-editor-wrapper .tl-shape[data-shape-type="handwrite"] > div {
           background: none !important;
         }
         .canvas-editor-wrapper .tl-shape[data-shape-type="text-note"] {
-          contain: none !important;
-        }
-        .canvas-editor-wrapper .tl-grid {
           contain: none !important;
         }
         .canvas-editor-wrapper .tlui-debug-panel {
@@ -1356,8 +1342,6 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
             createTextOnCanvasDoubleClick: false,
           }}
         />
-      {/* High-DPI ink layer — renders handwrite strokes at native screen resolution */}
-      <InkLayer ref={inkLayerRef} editor={editorRef.current} isDrawing={isDrawing} />
       {/* Page mask overlay — covers areas outside pages to hide out-of-bounds content */}
       {pageSize !== "infinite" && (() => {
         const pd = PAGE_SIZES.find(p => p.id === pageSize)

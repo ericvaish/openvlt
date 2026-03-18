@@ -50,11 +50,11 @@ export class HandwriteTool extends StateNode {
   private initWetInkCanvas() {
     if (this.canvas) return
 
-    const container = document.querySelector(".canvas-editor-wrapper .tl-container")
+    const container = this.editor.getContainer()
     if (container) {
       this.canvas = document.createElement("canvas")
       this.canvas.style.cssText =
-        "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;"
+        "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:400;"
       const dpr = window.devicePixelRatio || 1
       const rect = container.getBoundingClientRect()
       this.canvas.width = rect.width * dpr
@@ -233,11 +233,9 @@ export class HandwriteTool extends StateNode {
 
     this.isDrawing = false
 
-    // Clear wet ink after a frame — gives InkLayer time to render first
+    // Clear wet ink after one frame — tldraw renders the SVG shape immediately
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this.clearWetInk()
-      })
+      this.clearWetInk()
     })
 
     // Read from active pen preset (same as onPointerDown)
