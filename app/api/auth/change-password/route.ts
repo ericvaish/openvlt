@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getDb } from "@/lib/db"
 import { hashPassword, verifyPassword } from "@/lib/auth/crypto"
-import { AuthError, requireAuth } from "@/lib/auth/middleware"
+import { AuthError, getSession, requireAuth } from "@/lib/auth/middleware"
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,6 +44,17 @@ export async function POST(request: NextRequest) {
       newHash,
       user.id
     )
+
+    // Invalidate all other sessions for this user (keep current session)
+    const session = await getSession()
+    if (session) {
+      db.prepare(
+        "DELETE FROM sessions WHERE user_id = ? AND token != ?"
+      ).run(user.id, session.token)
+    } else {
+      // Shouldn't happen since requireAuth passed, but be safe
+      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
