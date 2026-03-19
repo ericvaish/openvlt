@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { AuthError, requireAuthWithVault } from "@/lib/auth/middleware"
+import { AuthError, requireAdmin, requireAuthWithVault } from "@/lib/auth/middleware"
 import {
   saveProviderKey,
   listProviderKeys,
@@ -14,7 +14,7 @@ const VALID_PROVIDERS: AIProviderType[] = [
 
 export async function GET() {
   try {
-    const { user } = await requireAuthWithVault()
+    const user = await requireAdmin()
     const keys = listProviderKeys(user.id)
     return NextResponse.json(keys)
   } catch (error) {
@@ -30,7 +30,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAuthWithVault()
+    const user = await requireAdmin()
     const body = await request.json()
 
     const provider = body.provider as AIProviderType

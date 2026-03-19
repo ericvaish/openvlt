@@ -52,11 +52,17 @@ export async function GET(
     const rawName = path.basename(filePath)
     const safeName = rawName.replace(/[^\x20-\x7E]/g, "_")
 
+    // Force download for potentially dangerous file types to prevent XSS
+    const DANGEROUS_EXTENSIONS = [".svg", ".html", ".htm", ".js", ".mjs", ".xml", ".xhtml", ".php"]
+    const forceDownload = DANGEROUS_EXTENSIONS.includes(ext)
+    const disposition = forceDownload ? "attachment" : "inline"
+
     return new NextResponse(buffer, {
       headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": `inline; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(rawName)}`,
+        "Content-Type": forceDownload ? "application/octet-stream" : contentType,
+        "Content-Disposition": `${disposition}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(rawName)}`,
         "Cache-Control": "public, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
       },
     })
   } catch (error) {

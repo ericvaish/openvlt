@@ -16,6 +16,15 @@ const BLOCKED_PATHS = [
   "/bin",
   "/usr",
   "/tmp",
+  "/root",
+  "/home",
+  "/opt",
+  "/snap",
+  "/boot",
+  "/lib",
+  "/lib64",
+  "/run",
+  "/srv",
 ]
 
 function isBlockedPath(resolved: string): boolean {
@@ -32,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     const resolved = path.resolve(dirPath)
 
-    if (isBlockedPath(resolved)) {
+    if (resolved === "/" || isBlockedPath(resolved)) {
       return NextResponse.json(
         { error: "Access to this path is not allowed" },
         { status: 403 }

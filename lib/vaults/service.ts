@@ -5,6 +5,22 @@ import { getDb } from "@/lib/db"
 import { createWelcomeNote } from "@/lib/welcome-note"
 import type { Vault } from "@/types"
 
+/**
+ * Paths that must never be used as vault roots.
+ * Blocks sensitive system directories to prevent arbitrary filesystem access.
+ */
+const BLOCKED_VAULT_PATHS = [
+  "/etc", "/var", "/proc", "/sys", "/dev", "/sbin", "/bin", "/usr",
+  "/tmp", "/private", "/System", "/root", "/home", "/opt", "/snap",
+  "/boot", "/lib", "/lib64", "/run", "/srv",
+]
+
+function isBlockedVaultPath(resolved: string): boolean {
+  return BLOCKED_VAULT_PATHS.some(
+    (blocked) => resolved === blocked || resolved.startsWith(blocked + "/")
+  )
+}
+
 export function validateVaultPath(dirPath: string): {
   valid: boolean
   error?: string
@@ -13,19 +29,31 @@ export function validateVaultPath(dirPath: string): {
     return { valid: false, error: "Path must be absolute" }
   }
 
+  const resolved = path.resolve(dirPath)
+
+  // Block sensitive system paths
+  if (isBlockedVaultPath(resolved)) {
+    return { valid: false, error: "This path is not allowed for security reasons" }
+  }
+
+  // Block the root filesystem
+  if (resolved === "/") {
+    return { valid: false, error: "Cannot use the root filesystem as a vault" }
+  }
+
   try {
-    if (fs.existsSync(dirPath)) {
-      const stats = fs.statSync(dirPath)
+    if (fs.existsSync(resolved)) {
+      const stats = fs.statSync(resolved)
       if (!stats.isDirectory()) {
         return { valid: false, error: "Path exists but is not a directory" }
       }
       // Check writable
-      fs.accessSync(dirPath, fs.constants.W_OK)
+      fs.accessSync(resolved, fs.constants.W_OK)
       return { valid: true }
     }
 
     // Try to create the directory to check if writable
-    const parent = path.dirname(dirPath)
+    const parent = path.dirname(resolved)
     if (!fs.existsSync(parent)) {
       return {
         valid: false,
