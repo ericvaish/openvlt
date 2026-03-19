@@ -304,9 +304,18 @@ function isTextType(mime: string): boolean {
   )
 }
 
+function selfCryptoUUID(): string {
+  const b = new Uint8Array(16)
+  crypto.getRandomValues(b)
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = Array.from(b, (v) => v.toString(16).padStart(2, "0")).join("")
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}
+
 function fileToAttachment(file: File): Promise<AIChatAttachment> {
   return new Promise((resolve) => {
-    const id = crypto.randomUUID()
+    const id = globalThis.crypto?.randomUUID?.() ?? selfCryptoUUID()
     const base: AIChatAttachment = {
       id,
       type: IMAGE_TYPES.has(file.type) ? "image" : "file",
@@ -601,7 +610,7 @@ function AIChatPanel() {
   return (
     <div
       data-ai-chat
-      className="relative flex h-full shrink-0 flex-col overflow-hidden border-l bg-sidebar"
+      className="relative z-30 flex h-full shrink-0 flex-col overflow-hidden border-l bg-sidebar"
       style={{ width }}
       onDrop={handleDrop}
       onDragOver={handleDragOver}

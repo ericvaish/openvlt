@@ -120,6 +120,7 @@ export function TabContainer() {
 
   const [dropSide, setDropSide] = React.useState<"left" | "right" | null>(null)
   const [isDraggingTab, setIsDraggingTab] = React.useState(false)
+  const contentAreaRef = React.useRef<HTMLDivElement>(null)
   const [userName, setUserName] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -421,48 +422,50 @@ export function TabContainer() {
       <TabBar />
       {/* min-w-0: required so split panes shrink to fit available width
            instead of overflowing. Do not remove. */}
-      <div className="relative flex min-w-0 flex-1 overflow-hidden">
-        {/* Drop zone overlays — only visible during tab drag */}
-        {isDraggingTab && (
-          <>
-            <div
-              className="absolute inset-y-0 left-0 z-20 w-1/2"
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDropSide("left")
-              }}
-              onDragLeave={() => setDropSide(null)}
-              onDrop={(e) => handleDrop(e, "left")}
-            >
-              {dropSide === "left" && (
-                <div className="flex h-full items-center justify-center border-2 border-dashed border-primary/50 bg-primary/5">
-                  <span className="rounded-md bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
-                    Open on left
-                  </span>
-                </div>
-              )}
-            </div>
-            <div
-              className="absolute inset-y-0 right-0 z-20 w-1/2"
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDropSide("right")
-              }}
-              onDragLeave={() => setDropSide(null)}
-              onDrop={(e) => handleDrop(e, "right")}
-            >
-              {dropSide === "right" && (
-                <div className="flex h-full items-center justify-center border-2 border-dashed border-primary/50 bg-primary/5">
-                  <span className="rounded-md bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
-                    Open on right
-                  </span>
-                </div>
-              )}
-            </div>
-          </>
-        )}
+      <div className="flex min-w-0 flex-1 overflow-hidden">
+        {/* Content area (main panel + split pane) — drop zones are scoped to this */}
+        <div ref={contentAreaRef} className="relative flex min-w-0 flex-1 overflow-hidden">
+          {/* Drop zone overlays — only visible during tab drag, scoped to content area */}
+          {isDraggingTab && (
+            <>
+              <div
+                className="absolute inset-y-0 left-0 z-20 w-1/2"
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDropSide("left")
+                }}
+                onDragLeave={() => setDropSide(null)}
+                onDrop={(e) => handleDrop(e, "left")}
+              >
+                {dropSide === "left" && (
+                  <div className="flex h-full items-center justify-center border-2 border-dashed border-primary/50 bg-primary/5">
+                    <span className="rounded-md bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+                      Open on left
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div
+                className="absolute inset-y-0 right-0 z-20 w-1/2"
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDropSide("right")
+                }}
+                onDragLeave={() => setDropSide(null)}
+                onDrop={(e) => handleDrop(e, "right")}
+              >
+                {dropSide === "right" && (
+                  <div className="flex h-full items-center justify-center border-2 border-dashed border-primary/50 bg-primary/5">
+                    <span className="rounded-md bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+                      Open on right
+                    </span>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
-        {/* Main panel */}
+          {/* Main panel */}
         <div className="relative min-w-0 flex-1 overflow-hidden">
           {tabs.map((tab) =>
             tab.noteId === "__graph__" ? (
@@ -561,7 +564,9 @@ export function TabContainer() {
           </>
         )}
 
-        {/* AI Chat sidebar - sits inside content area, below tab bar */}
+        </div>
+
+        {/* AI Chat sidebar - outside content area so drop zones don't overlap */}
         <AIChatSidebar />
       </div>
     </div>

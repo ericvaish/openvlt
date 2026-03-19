@@ -670,6 +670,55 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
   React.useEffect(() => { customSpacingRef.current = customSpacing }, [customSpacing])
   React.useEffect(() => { pressureSensitivityRef.current = pressureSensitivity }, [pressureSensitivity])
 
+  // Keyboard shortcuts for canvas zoom (Shift+= zoom in, Shift+- zoom out, Shift+0 reset)
+  React.useEffect(() => {
+    const zoomSteps = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 8]
+
+    function zoomToCenter(editor: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any, newZoom: number) {
+      const cam = editor.getCamera()
+      const oldZoom = cam.z ?? 1
+      const sb = editor.getViewportScreenBounds()
+      // Centre of viewport in page coords
+      const cx = sb.w / 2 / oldZoom - cam.x
+      const cy = sb.h / 2 / oldZoom - cam.y
+      // Keep that page point at the viewport centre under the new zoom
+      editor.setCamera({
+        x: sb.w / 2 / newZoom - cx,
+        y: sb.h / 2 / newZoom - cy,
+        z: newZoom,
+      })
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const editor = editorRef.current
+      if (!editor) return
+      // Don't intercept when typing in an input or text-note
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === "INPUT" || tag === "TEXTAREA") return
+      const isEditing = editor.getEditingShapeId()
+      if (isEditing) return
+
+      if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (e.key === "+" || e.key === "=") {
+          e.preventDefault()
+          const zoom = editor.getZoomLevel()
+          const next = zoomSteps.find((s: number) => s > zoom + 0.01) ?? zoomSteps[zoomSteps.length - 1]
+          zoomToCenter(editor, next)
+        } else if (e.key === "_" || e.key === "-") {
+          e.preventDefault()
+          const zoom = editor.getZoomLevel()
+          const prev = [...zoomSteps].reverse().find((s: number) => s < zoom - 0.01) ?? zoomSteps[0]
+          zoomToCenter(editor, prev)
+        } else if (e.key === ")" || e.key === "0") {
+          e.preventDefault()
+          zoomToCenter(editor, 1)
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [])
+
   // Save when settings change (pageSize, background, pageCount)
   React.useEffect(() => {
     const editor = editorRef.current
