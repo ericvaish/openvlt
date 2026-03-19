@@ -16,9 +16,42 @@ const gitInfo = getGitInfo()
 const nextConfig = {
   output: "standalone",
   serverExternalPackages: ["better-sqlite3", "adm-zip"],
+  poweredByHeader: false,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "50mb",
+    },
+  },
   env: {
     NEXT_PUBLIC_COMMIT_HASH: gitInfo.commitHash,
     NEXT_PUBLIC_COMMIT_DATE: gitInfo.commitDate,
+  },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: blob:",
+              "font-src 'self' data:",
+              "connect-src 'self' https://api.openai.com https://api.anthropic.com https://openrouter.ai",
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+            ].join("; "),
+          },
+        ],
+      },
+    ]
   },
 }
 

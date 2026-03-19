@@ -27,6 +27,11 @@ export async function GET(
       return NextResponse.json({ error: "Note not found" }, { status: 404 })
     }
 
+    // Don't expose trashed notes via direct access (use trash filter instead)
+    if (note.metadata.isTrashed) {
+      return NextResponse.json({ error: "Note not found" }, { status: 404 })
+    }
+
     // Include backlinks if requested
     const includeBacklinks =
       request.nextUrl.searchParams.get("backlinks") === "true"
