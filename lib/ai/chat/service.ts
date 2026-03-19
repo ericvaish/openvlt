@@ -189,7 +189,17 @@ async function runGeneration(
   providerOverride?: AIProviderType,
   modelOverride?: string
 ): Promise<void> {
-  const resolved = await resolveProvider(userId, providerOverride, modelOverride)
+  let resolved: Awaited<ReturnType<typeof resolveProvider>>
+  try {
+    resolved = await resolveProvider(userId, providerOverride, modelOverride)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to resolve AI provider"
+    emitEvent(conversationId, { type: "error", content: msg })
+    emitEvent(conversationId, { type: "done" })
+    failGeneration(conversationId, msg)
+    updateConversationStatus(conversationId, "error", undefined, msg)
+    return
+  }
 
   if ("error" in resolved) {
     const errMsg = resolved.error as string

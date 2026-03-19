@@ -128,14 +128,20 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
       if (!mountedRef.current) return
 
-      setState((s) => ({
-        ...s,
-        conversationId: conv.id,
-        messages,
-        usage: conv.usage,
-        error: conv.error,
-        isReconnecting: conv.status === "generating",
-      }))
+      // Don't overwrite state if the user started a new action while we were loading
+      setState((s) => {
+        if (s.isStreaming || s.error) {
+          return { ...s, isReconnecting: false }
+        }
+        return {
+          ...s,
+          conversationId: conv.id,
+          messages,
+          usage: conv.usage,
+          error: conv.error,
+          isReconnecting: conv.status === "generating",
+        }
+      })
 
       // If still generating, reconnect to the SSE stream
       if (conv.status === "generating") {
@@ -560,12 +566,26 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         })
 
         if (!response.ok) {
-          const err = await response.json()
+          let errorMsg = "Request failed"
+          try {
+            const err = await response.json()
+            errorMsg = err.error || `Request failed (${response.status})`
+          } catch {
+            errorMsg = `Request failed (${response.status})`
+          }
           setState((s) => ({
             ...s,
             isStreaming: false,
-            error: err.error || "Request failed",
-            messages: s.messages.slice(0, -1),
+            error: errorMsg,
+            // Remove the empty assistant placeholder
+            messages: s.messages.filter(
+              (m, i) =>
+                !(
+                  i === s.messages.length - 1 &&
+                  m.role === "assistant" &&
+                  !m.content
+                )
+            ),
           }))
           return
         }
@@ -579,11 +599,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           setState((s) => ({ ...s, isStreaming: false }))
           return
         }
+        const errorMsg =
+          error instanceof Error ? error.message : "Unknown error"
         setState((s) => ({
           ...s,
           isStreaming: false,
-          error:
-            error instanceof Error ? error.message : "Unknown error",
+          error: errorMsg,
         }))
       }
     },
