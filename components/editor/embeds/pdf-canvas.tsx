@@ -81,7 +81,8 @@ export const PdfCanvas = React.memo(function PdfCanvas({
           await page.render({
             canvasContext: ctx,
             viewport,
-          }).promise
+            canvas,
+          } as Parameters<typeof page.render>[0]).promise
 
           if (cancelled) break
 
