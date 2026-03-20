@@ -27,6 +27,11 @@ export async function GET(
       return NextResponse.json({ error: "Note not found" }, { status: 404 })
     }
 
+    // Don't expose trashed notes via direct access (use trash filter instead)
+    if (note.metadata.isTrashed) {
+      return NextResponse.json({ error: "Note not found" }, { status: 404 })
+    }
+
     // Include backlinks if requested
     const includeBacklinks =
       request.nextUrl.searchParams.get("backlinks") === "true"
@@ -168,9 +173,8 @@ export async function DELETE(
         { status: error.status }
       )
     }
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 }
-    )
+    const message = error instanceof Error ? error.message : "Unknown error"
+    const status = message === "Note not found" ? 404 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

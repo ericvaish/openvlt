@@ -18,6 +18,12 @@ export async function GET(request: NextRequest) {
     const filter = searchParams.get("filter")
 
     if (search) {
+      if (search.length > 500) {
+        return NextResponse.json(
+          { error: "Search query too long (max 500 characters)" },
+          { status: 400 }
+        )
+      }
       const notes = searchNotes(search, user.id, vaultId)
       return NextResponse.json(notes)
     }
@@ -56,6 +62,13 @@ export async function POST(request: NextRequest) {
     if (!title || typeof title !== "string") {
       return NextResponse.json(
         { error: "Title is required" },
+        { status: 400 }
+      )
+    }
+
+    if (title.length > 255) {
+      return NextResponse.json(
+        { error: "Title too long (max 255 characters)" },
         { status: 400 }
       )
     }

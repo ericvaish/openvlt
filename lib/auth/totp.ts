@@ -13,14 +13,13 @@ const TOTP_ALGORITHM = "SHA1"
 
 function getServerKey(): Buffer {
   const key = process.env.OPENVLT_SERVER_KEY
-  if (!key || key.length < 32) {
-    // Derive a stable key from a fallback so TOTP still works without explicit config
-    return crypto
-      .createHash("sha256")
-      .update(key || "openvlt-default-server-key")
-      .digest()
+  if (!key || key.length < 64) {
+    throw new Error(
+      "OPENVLT_SERVER_KEY is not configured. " +
+      "Set it to a 64-character hex string (256 bits) in your environment."
+    )
   }
-  return Buffer.from(key.slice(0, 64).padEnd(64, "0"), "hex")
+  return Buffer.from(key.slice(0, 64), "hex")
 }
 
 function encryptSecret(plaintext: string): string {

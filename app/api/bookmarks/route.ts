@@ -33,9 +33,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { type, label, targetId, data } = body
 
-    if (!type || !label) {
+    if (!type || !label || typeof label !== "string") {
       return NextResponse.json(
         { error: "Type and label are required" },
+        { status: 400 }
+      )
+    }
+
+    // Sanitize label to prevent XSS — strip HTML tags
+    const sanitizedLabel = label.replace(/<[^>]*>/g, "").slice(0, 200)
+    if (!sanitizedLabel.trim()) {
+      return NextResponse.json(
+        { error: "Label cannot be empty" },
         { status: 400 }
       )
     }
@@ -45,6 +54,20 @@ export async function POST(request: NextRequest) {
         { error: "Invalid bookmark type" },
         { status: 400 }
       )
+    }
+
+    // Validate targetId exists for note bookmarks
+    if (type === "note" && targetId) {
+      const db = (await import("@/lib/db")).getDb()
+      const noteExists = db
+        .prepare("SELECT 1 FROM notes WHERE id = ? AND user_id = ? AND vault_id = ?")
+        .get(targetId, user.id, vaultId)
+      if (!noteExists) {
+        return NextResponse.json(
+          { error: "Target note not found" },
+          { status: 404 }
+        )
+      }
     }
 
     // Toggle: if bookmark already exists, remove it
@@ -64,7 +87,7 @@ export async function POST(request: NextRequest) {
       user.id,
       vaultId,
       type,
-      label,
+      sanitizedLabel,
       targetId,
       data
     )

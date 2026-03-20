@@ -389,13 +389,14 @@ export function updateNoteContent(
     rawForDisk = withFrontmatter(content)
     fs.writeFileSync(fullPath, rawForDisk, "utf-8")
   }
-  const newVersion = currentVersion + 1
+  // Atomic version increment in SQL to prevent race conditions
   const now = new Date().toISOString()
-  db.prepare("UPDATE notes SET version = ?, updated_at = ? WHERE id = ?").run(
-    newVersion,
+  db.prepare("UPDATE notes SET version = version + 1, updated_at = ? WHERE id = ?").run(
     now,
     id
   )
+  const updatedRow = db.prepare("SELECT version FROM notes WHERE id = ?").get(id) as { version: number }
+  const newVersion = updatedRow.version
 
   // Update FTS index — use extracted text for canvas notes, content only (no frontmatter) for markdown
   const ftsContent = isOpenvlt ? (extractTextFromCanvas(content) || row.title) : content
@@ -551,17 +552,23 @@ export function deleteNote(
   if (hard) {
     const vaultRoot = getVaultPath(vaultId)
     const fullPath = safeResolvePath(vaultRoot, row.file_path)
+
+    // Use transaction for atomic delete across FTS + notes tables
+    const deleteTransaction = db.transaction(() => {
+      db.prepare(
+        "DELETE FROM notes_fts WHERE rowid = (SELECT rowid FROM notes WHERE id = ?)"
+      ).run(id)
+      db.prepare(
+        "DELETE FROM notes WHERE id = ? AND user_id = ? AND vault_id = ?"
+      ).run(id, userId, vaultId)
+    })
+    deleteTransaction()
+
     try {
       fs.unlinkSync(fullPath)
     } catch {
       // File already gone
     }
-    db.prepare(
-      "DELETE FROM notes_fts WHERE rowid = (SELECT rowid FROM notes WHERE id = ?)"
-    ).run(id)
-    db.prepare(
-      "DELETE FROM notes WHERE id = ? AND user_id = ? AND vault_id = ?"
-    ).run(id, userId, vaultId)
 
     recordStructureEvent(
       vaultId,

@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get("X-Peer-Signature")
 
     if (!pairingId || !peerId || !timestamp || !signature) {
-      return NextResponse.json({ error: "Missing peer headers" }, { status: 400 })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const body = await request.text()
@@ -42,10 +42,15 @@ export async function POST(request: NextRequest) {
       changes: SyncLogEntry[]
     }
 
+    // Ensure body pairingId matches the authenticated header pairingId
+    if (data.pairingId !== pairingId) {
+      return NextResponse.json({ error: "Pairing ID mismatch" }, { status: 403 })
+    }
+
     const db = getDb()
     const pairing = db
       .prepare("SELECT local_vault_id FROM sync_pairings WHERE id = ? AND is_active = 1")
-      .get(data.pairingId) as { local_vault_id: string } | undefined
+      .get(pairingId) as { local_vault_id: string } | undefined
 
     if (!pairing) {
       return NextResponse.json({ error: "Pairing not found" }, { status: 404 })

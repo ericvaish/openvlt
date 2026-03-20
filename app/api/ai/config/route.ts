@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { AuthError, requireAuthWithVault } from "@/lib/auth/middleware"
+import { AuthError, requireAdmin, requireAuthWithVault } from "@/lib/auth/middleware"
 import { getDb } from "@/lib/db"
 import type { AIConfig, AIProviderType } from "@/types"
 
@@ -86,7 +86,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAuthWithVault()
+    const user = await requireAdmin()
     const body = await request.json()
     const db = getDb()
     const now = new Date().toISOString()

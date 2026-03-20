@@ -161,6 +161,31 @@ export function listAllPairings(): SyncPairing[] {
 }
 
 /**
+ * List pairings scoped to vaults owned by a specific user.
+ */
+export function listPairingsForUser(userId: string): SyncPairing[] {
+  const db = getDb()
+  const rows = db
+    .prepare(
+      `SELECT sp.* FROM sync_pairings sp
+       JOIN vaults v ON v.id = sp.local_vault_id
+       WHERE v.user_id = ?`
+    )
+    .all(userId) as Record<string, unknown>[]
+
+  return rows.map((r) => ({
+    id: r.id as string,
+    localVaultId: r.local_vault_id as string,
+    remotePeerId: r.remote_peer_id as string,
+    remoteUrl: r.remote_url as string,
+    syncMode: r.sync_mode as "all" | "selected",
+    isActive: (r.is_active as number) === 1,
+    lastSyncAt: (r.last_sync_at as string) || null,
+    createdAt: r.created_at as string,
+  }))
+}
+
+/**
  * Revoke (deactivate) a pairing.
  */
 export function revokePairing(pairingId: string): void {

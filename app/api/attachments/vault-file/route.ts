@@ -63,6 +63,10 @@ export async function GET(request: NextRequest) {
 
     const buffer = fs.readFileSync(fullPath)
 
+    // Force download for potentially dangerous file types to prevent XSS
+    const DANGEROUS_EXTENSIONS = [".svg", ".html", ".htm", ".js", ".mjs", ".xml", ".xhtml", ".php"]
+    const isDangerous = DANGEROUS_EXTENSIONS.includes(ext)
+
     // Inline-viewable types open in browser; others download
     const inlineTypes = [
       "image/",
@@ -72,15 +76,16 @@ export async function GET(request: NextRequest) {
       "video/",
       "audio/",
     ]
-    const isInline = inlineTypes.some((t) => contentType.startsWith(t))
+    const isInline = !isDangerous && inlineTypes.some((t) => contentType.startsWith(t))
 
     return new NextResponse(buffer, {
       headers: {
-        "Content-Type": contentType,
+        "Content-Type": isDangerous ? "application/octet-stream" : contentType,
         "Content-Disposition": isInline
           ? `inline; filename="${fileName}"`
           : `attachment; filename="${fileName}"`,
         "Content-Length": String(stat.size),
+        "X-Content-Type-Options": "nosniff",
       },
     })
   } catch (error) {

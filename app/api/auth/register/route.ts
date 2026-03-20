@@ -28,6 +28,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Normalize and validate username: NFKC normalize, ASCII-only, no whitespace-only
+    const normalizedUsername = username.trim().toLowerCase().normalize("NFKC")
+    if (!normalizedUsername) {
+      return NextResponse.json(
+        { error: "Username is required" },
+        { status: 400 }
+      )
+    }
+    if (!/^[a-z0-9_.-]+$/.test(normalizedUsername)) {
+      return NextResponse.json(
+        { error: "Username must contain only letters (a-z), numbers, underscores, hyphens, and dots" },
+        { status: 400 }
+      )
+    }
+    if (normalizedUsername.length > 64) {
+      return NextResponse.json(
+        { error: "Username must be 64 characters or less" },
+        { status: 400 }
+      )
+    }
+
     if (!password || typeof password !== "string" || password.length < 8) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters" },
@@ -43,9 +64,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { user, recoveryKey } = await createUser(
-      username.trim().toLowerCase(),
+      normalizedUsername,
       password,
-      displayName.trim()
+      displayName.trim().slice(0, 128)
     )
 
     return NextResponse.json({ user, recoveryKey }, { status: 201 })
@@ -55,12 +76,12 @@ export async function POST(request: NextRequest) {
       error.message === "Username already taken"
     ) {
       return NextResponse.json(
-        { error: "Username already taken" },
-        { status: 409 }
+        { error: "Registration failed. Please try a different username." },
+        { status: 400 }
       )
     }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Registration failed" },
       { status: 500 }
     )
   }

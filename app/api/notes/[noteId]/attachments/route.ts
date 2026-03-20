@@ -39,12 +39,27 @@ export async function POST(
       )
     }
 
+    // Enforce file size limit (50MB)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: "File too large (max 50MB)" },
+        { status: 413 }
+      )
+    }
+
+    // Sanitize filename: strip null bytes and control characters
+    const sanitizedName = file.name
+      .replace(/[\x00-\x1f\x7f]/g, "")
+      .replace(/\.\./g, "_")
+      .trim() || "unnamed"
+
     const buffer = Buffer.from(await file.arrayBuffer())
     const attachment = saveAttachment(
       noteId,
       user.id,
       vaultId,
-      file.name,
+      sanitizedName,
       buffer,
       file.type || "application/octet-stream"
     )

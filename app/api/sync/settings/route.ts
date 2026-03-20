@@ -3,16 +3,16 @@ import { requireAuth, AuthError } from "@/lib/auth/middleware"
 import {
   getLocalPeer,
   updatePeerName,
-  listAllPairings,
+  listPairingsForUser,
   revokePairing,
 } from "@/lib/sync/peer"
 import { disconnectPeer } from "@/lib/sync/engine"
 
 export async function GET() {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const localPeer = getLocalPeer()
-    const pairings = listAllPairings()
+    const pairings = listPairingsForUser(user.id)
 
     return NextResponse.json({
       peer: localPeer,
@@ -28,7 +28,7 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const body = (await request.json()) as {
       peerName?: string
       revokePairingId?: string
@@ -44,7 +44,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const localPeer = getLocalPeer()
-    const pairings = listAllPairings()
+    const pairings = listPairingsForUser(user.id)
 
     return NextResponse.json({
       peer: localPeer,
