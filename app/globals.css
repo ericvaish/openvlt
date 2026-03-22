@@ -796,6 +796,13 @@ body {
   background: var(--muted);
 }
 
+/* Sticky table header row — toggled via data attribute on .tiptap */
+.tiptap[data-sticky-header="true"] th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 .tiptap .selectedCell {
   background: var(--accent);
 }

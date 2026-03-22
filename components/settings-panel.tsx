@@ -42,6 +42,8 @@ import {
 } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useSidebarLayout } from "@/hooks/use-sidebar-layout"
+import { useStickyTableHeader } from "@/hooks/use-sticky-table-header"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import {
   useShortcuts,
@@ -120,6 +122,8 @@ export function SettingsPanel() {
   const isMobile = useIsMobile()
   const { layout: sidebarLayout, setLayout: setSidebarLayout } =
     useSidebarLayout()
+  const { enabled: stickyHeader, setEnabled: setStickyHeader } =
+    useStickyTableHeader()
   const [user, setUser] = React.useState<User | null>(null)
 
   // Read active settings section from URL pathname (/settings/ai, /settings/data, etc.)
@@ -861,6 +865,20 @@ export function SettingsPanel() {
                         Horizontal
                       </Button>
                     </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-4">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Sticky table headers
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Keep the header row visible when scrolling long tables
+                      </p>
+                    </div>
+                    <Switch
+                      checked={stickyHeader}
+                      onCheckedChange={setStickyHeader}
+                    />
                   </div>
                 </div>
               </SectionCard>

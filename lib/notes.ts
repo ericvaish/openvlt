@@ -136,9 +136,12 @@ export function createNote(
       ? "canvas"
       : "markdown"
 
-  // Find a unique filename (append counter if needed)
+  // Find a unique note folder name (append counter if needed)
+  let noteFolderName = safeTitle
   let fileName = `${safeTitle}${ext}`
-  let filePath = folderPrefix ? path.join(folderPrefix, fileName) : fileName
+  let filePath = folderPrefix
+    ? path.join(folderPrefix, noteFolderName, fileName)
+    : path.join(noteFolderName, fileName)
   let counter = 1
   while (
     db
@@ -150,12 +153,17 @@ export function createNote(
       : isCanvas
         ? `${safeTitle} ${counter}`
         : `${safeTitle} ${counter}`
+    noteFolderName = base
     fileName = `${base}${ext}`
-    filePath = folderPrefix ? path.join(folderPrefix, fileName) : fileName
+    filePath = folderPrefix
+      ? path.join(folderPrefix, noteFolderName, fileName)
+      : path.join(noteFolderName, fileName)
     counter++
   }
 
+  // Create the note's own folder and write the file inside it
   const fullPath = safeResolvePath(vaultRoot, filePath)
+  fs.mkdirSync(path.dirname(fullPath), { recursive: true })
   const defaultCanvasContent = JSON.stringify({
     type: "openvlt-canvas",
     version: 2,
@@ -473,7 +481,6 @@ export function updateNoteTitle(
 
   const vaultRoot = getVaultPath(vaultId)
   const oldFullPath = safeResolvePath(vaultRoot, row.file_path)
-  const dir = path.dirname(row.file_path)
 
   // Preserve the original file extension
   const isOpenvltCanvas = row.file_path.endsWith(".openvlt")
@@ -482,11 +489,35 @@ export function updateNoteTitle(
   const ext = isOpenvltCanvas ? ".openvlt" : isCanvasFile ? ".canvas.json" : isExcalidrawFile ? ".excalidraw.json" : ".md"
   const safeNewTitle = title.replace(/[<>:"/\\|?*]/g, "_")
   const newFileName = `${safeNewTitle}${ext}`
-  const newFilePath = dir === "." ? newFileName : path.join(dir, newFileName)
+
+  // Note folder is the parent directory of the file (e.g. "parent/OldTitle/OldTitle.md")
+  const oldNoteDir = path.dirname(row.file_path)
+  const parentDir = path.dirname(oldNoteDir)
+  const newNoteDir = parentDir === "." ? safeNewTitle : path.join(parentDir, safeNewTitle)
+  const newFilePath = path.join(newNoteDir, newFileName)
   const newFullPath = safeResolvePath(vaultRoot, newFilePath)
 
-  if (oldFullPath !== newFullPath && fs.existsSync(oldFullPath)) {
+  // Rename the note folder on disk (which moves all attachments too)
+  const oldNoteDirFull = safeResolvePath(vaultRoot, oldNoteDir)
+  const newNoteDirFull = safeResolvePath(vaultRoot, newNoteDir)
+  if (oldNoteDirFull !== newNoteDirFull && fs.existsSync(oldNoteDirFull)) {
+    fs.renameSync(oldNoteDirFull, newNoteDirFull)
+  } else if (oldFullPath !== newFullPath && fs.existsSync(oldFullPath)) {
+    // Fallback: just rename the file if folder rename didn't apply
     fs.renameSync(oldFullPath, newFullPath)
+  }
+
+  // Update attachment paths in DB to reflect the new folder name
+  const attachments = db
+    .prepare("SELECT id, file_path FROM attachments WHERE note_id = ?")
+    .all(id) as { id: string; file_path: string }[]
+  for (const att of attachments) {
+    const attFileName = path.basename(att.file_path)
+    const newAttPath = path.join(newNoteDir, attFileName)
+    db.prepare("UPDATE attachments SET file_path = ? WHERE id = ?").run(
+      newAttPath,
+      att.id
+    )
   }
 
   const oldTitle = row.file_path
@@ -585,7 +616,10 @@ export function deleteNote(
 
   if (hard) {
     const vaultRoot = getVaultPath(vaultId)
-    const fullPath = safeResolvePath(vaultRoot, row.file_path)
+    const noteDir = path.dirname(row.file_path)
+
+    // Delete attachments from DB
+    db.prepare("DELETE FROM attachments WHERE note_id = ?").run(id)
 
     // Use transaction for atomic delete across FTS + notes tables
     const deleteTransaction = db.transaction(() => {
@@ -598,10 +632,12 @@ export function deleteNote(
     })
     deleteTransaction()
 
+    // Remove the entire note folder (includes attachments on disk)
     try {
-      fs.unlinkSync(fullPath)
+      const noteDirFull = safeResolvePath(vaultRoot, noteDir)
+      fs.rmSync(noteDirFull, { recursive: true, force: true })
     } catch {
-      // File already gone
+      // Folder already gone
     }
 
     try {
@@ -714,10 +750,12 @@ export function moveNote(
 
   const vaultRoot = getVaultPath(vaultId)
   const oldFilePath = row.file_path as string
-  const oldFullPath = safeResolvePath(vaultRoot, oldFilePath)
   const fileName = path.basename(oldFilePath)
+  // The note folder is the direct parent of the file (e.g. "parent/MyNote/MyNote.md" → "parent/MyNote")
+  const oldNoteDir = path.dirname(oldFilePath)
+  const noteFolderName = path.basename(oldNoteDir)
 
-  let newDir = ""
+  let newParentDir = ""
   if (newParentId) {
     const folder = db
       .prepare(
@@ -725,36 +763,34 @@ export function moveNote(
       )
       .get(newParentId, userId, vaultId) as { path: string } | undefined
     if (!folder) throw new Error("Target folder not found")
-    newDir = folder.path
+    newParentDir = folder.path
   }
 
-  const newFilePath = newDir ? path.join(newDir, fileName) : fileName
-  const newFullPath = safeResolvePath(vaultRoot, newFilePath)
+  const newNoteDir = newParentDir
+    ? path.join(newParentDir, noteFolderName)
+    : noteFolderName
+  const newFilePath = path.join(newNoteDir, fileName)
 
-  if (oldFullPath !== newFullPath) {
-    fs.mkdirSync(path.dirname(newFullPath), { recursive: true })
-    fs.renameSync(oldFullPath, newFullPath)
+  const oldNoteDirFull = safeResolvePath(vaultRoot, oldNoteDir)
+  const newNoteDirFull = safeResolvePath(vaultRoot, newNoteDir)
 
-    // Also move attachments on disk
+  if (oldNoteDirFull !== newNoteDirFull) {
+    // Move the entire note folder (includes attachments)
+    fs.mkdirSync(path.dirname(newNoteDirFull), { recursive: true })
+    fs.renameSync(oldNoteDirFull, newNoteDirFull)
+
+    // Update attachment paths in DB
     const attachments = db
       .prepare("SELECT id, file_path FROM attachments WHERE note_id = ?")
       .all(id) as { id: string; file_path: string }[]
 
     for (const att of attachments) {
       const attFileName = path.basename(att.file_path)
-      const newAttDir = newDir || ""
-      const newAttPath = newAttDir
-        ? path.join(newAttDir, attFileName)
-        : attFileName
-      const oldAttFull = safeResolvePath(vaultRoot, att.file_path)
-      const newAttFull = safeResolvePath(vaultRoot, newAttPath)
-      if (oldAttFull !== newAttFull && fs.existsSync(oldAttFull)) {
-        fs.renameSync(oldAttFull, newAttFull)
-        db.prepare("UPDATE attachments SET file_path = ? WHERE id = ?").run(
-          newAttPath,
-          att.id
-        )
-      }
+      const newAttPath = path.join(newNoteDir, attFileName)
+      db.prepare("UPDATE attachments SET file_path = ? WHERE id = ?").run(
+        newAttPath,
+        att.id
+      )
     }
   }
 

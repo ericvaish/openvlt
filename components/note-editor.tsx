@@ -36,6 +36,7 @@ import { SyncedBlock } from "@/lib/editor/synced-block"
 import { NoNestedTables } from "@/lib/editor/no-nested-tables"
 import { useTabStore } from "@/lib/stores/tab-store"
 import { useShortcutAction } from "@/lib/stores/shortcuts-store"
+import { useStickyTableHeader } from "@/hooks/use-sticky-table-header"
 
 const lowlight = createLowlight(common)
 import { uploadAndInsert } from "@/lib/editor/upload"
@@ -87,6 +88,7 @@ export function NoteEditor({
     null
   )
   const { openTab } = useTabStore()
+  const { enabled: stickyHeader } = useStickyTableHeader()
   const [coverImage, setCoverImage] = React.useState<string | null>(
     initialCoverImage
   )
@@ -423,6 +425,12 @@ export function NoteEditor({
 
   // Keep ref in sync so editorProps handlers can access the editor
   editorRef.current = editor
+
+  // Sync sticky header data attribute onto the editor DOM element
+  React.useEffect(() => {
+    const el = editor?.view.dom
+    if (el) el.setAttribute("data-sticky-header", String(stickyHeader))
+  }, [editor, stickyHeader])
 
   // Explicit save
   useShortcutAction("save", () => {

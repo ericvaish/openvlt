@@ -39,11 +39,12 @@ export async function POST(
       )
     }
 
-    // Enforce file size limit (50MB)
-    const MAX_FILE_SIZE = 50 * 1024 * 1024
+    // Enforce file size limit (default 300MB, configurable via OPENVLT_MAX_UPLOAD_MB)
+    const maxMb = parseInt(process.env.OPENVLT_MAX_UPLOAD_MB || "300", 10) || 300
+    const MAX_FILE_SIZE = maxMb * 1024 * 1024
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: "File too large (max 50MB)" },
+        { error: `File too large (max ${maxMb}MB)` },
         { status: 413 }
       )
     }
