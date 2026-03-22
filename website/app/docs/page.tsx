@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ThemeToggle } from "@/app/theme-toggle"
+import { ThemeToggle } from "../theme-toggle"
 import {
   ArrowLeft,
   ArrowRight,

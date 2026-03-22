@@ -52,9 +52,11 @@ export function useSidebarData() {
   }, [activeTabId, tree])
 
   const SHOW_ALL_KEY = "openvlt:show-all-files"
-  const [showAllFiles, setShowAllFiles] = React.useState(false)
+  const [showAllFiles, setShowAllFiles] = React.useState(true)
   React.useEffect(() => {
-    setShowAllFiles(localStorage.getItem(SHOW_ALL_KEY) === "true")
+    // Default to showing all files unless explicitly turned off
+    const stored = localStorage.getItem(SHOW_ALL_KEY)
+    setShowAllFiles(stored !== "false")
   }, [])
   const showAllRef = React.useRef(showAllFiles)
   showAllRef.current = showAllFiles

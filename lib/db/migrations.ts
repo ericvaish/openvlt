@@ -882,6 +882,43 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 20,
+    description: "Add performance indexes for hot query paths",
+    up: (db) => {
+      db.exec(`
+        -- Notes: queried by (user_id, vault_id) on every list/search call
+        CREATE INDEX IF NOT EXISTS idx_notes_user_vault ON notes(user_id, vault_id);
+        -- Notes: filtered by is_trashed, sorted by updated_at
+        CREATE INDEX IF NOT EXISTS idx_notes_user_vault_active ON notes(user_id, vault_id, is_trashed, updated_at DESC);
+        -- Notes: parent folder listing
+        CREATE INDEX IF NOT EXISTS idx_notes_parent ON notes(parent_id, user_id, vault_id);
+        -- Notes: favorites listing
+        CREATE INDEX IF NOT EXISTS idx_notes_favorites ON notes(user_id, vault_id, is_favorite) WHERE is_favorite = 1 AND is_trashed = 0;
+        -- Notes: trash listing
+        CREATE INDEX IF NOT EXISTS idx_notes_trashed ON notes(user_id, vault_id, trashed_at DESC) WHERE is_trashed = 1;
+
+        -- Sessions: token lookup on every API request
+        CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+
+        -- Note tags: join table queried per note
+        CREATE INDEX IF NOT EXISTS idx_note_tags_note ON note_tags(note_id);
+        CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag_id);
+
+        -- Folders: queried by vault
+        CREATE INDEX IF NOT EXISTS idx_folders_user_vault ON folders(user_id, vault_id);
+
+        -- Attachments: queried by note
+        CREATE INDEX IF NOT EXISTS idx_attachments_note ON attachments(note_id);
+
+        -- Note versions: queried by note for history
+        CREATE INDEX IF NOT EXISTS idx_note_versions_note ON note_versions(note_id, version_number DESC);
+
+        -- Bookmarks: queried by user + vault
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_user_vault ON bookmarks(user_id, vault_id);
+      `)
+    },
+  },
 ]
 
 export function runMigrations(db: Database.Database) {

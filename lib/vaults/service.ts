@@ -2,24 +2,9 @@ import fs from "fs"
 import path from "path"
 import { v4 as uuid } from "uuid"
 import { getDb } from "@/lib/db"
+import { isBlockedPath } from "@/lib/paths"
 import { createWelcomeNote } from "@/lib/welcome-note"
 import type { Vault } from "@/types"
-
-/**
- * Paths that must never be used as vault roots.
- * Blocks sensitive system directories to prevent arbitrary filesystem access.
- */
-const BLOCKED_VAULT_PATHS = [
-  "/etc", "/var", "/proc", "/sys", "/dev", "/sbin", "/bin", "/usr",
-  "/tmp", "/private", "/System", "/root", "/home", "/opt", "/snap",
-  "/boot", "/lib", "/lib64", "/run", "/srv",
-]
-
-function isBlockedVaultPath(resolved: string): boolean {
-  return BLOCKED_VAULT_PATHS.some(
-    (blocked) => resolved === blocked || resolved.startsWith(blocked + "/")
-  )
-}
 
 export function validateVaultPath(dirPath: string): {
   valid: boolean
@@ -31,14 +16,14 @@ export function validateVaultPath(dirPath: string): {
 
   const resolved = path.resolve(dirPath)
 
-  // Block sensitive system paths
-  if (isBlockedVaultPath(resolved)) {
-    return { valid: false, error: "This path is not allowed for security reasons" }
-  }
-
   // Block the root filesystem
   if (resolved === "/") {
     return { valid: false, error: "Cannot use the root filesystem as a vault" }
+  }
+
+  // Block sensitive system paths (allowed paths take precedence)
+  if (isBlockedPath(resolved)) {
+    return { valid: false, error: "This path is not allowed for security reasons" }
   }
 
   try {

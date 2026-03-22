@@ -3,35 +3,7 @@ import path from "path"
 import os from "os"
 import { NextRequest, NextResponse } from "next/server"
 import { AuthError, requireAuth } from "@/lib/auth/middleware"
-
-const BLOCKED_PATHS = [
-  "/etc",
-  "/var",
-  "/private",
-  "/System",
-  "/proc",
-  "/sys",
-  "/dev",
-  "/sbin",
-  "/bin",
-  "/usr",
-  "/tmp",
-  "/root",
-  "/home",
-  "/opt",
-  "/snap",
-  "/boot",
-  "/lib",
-  "/lib64",
-  "/run",
-  "/srv",
-]
-
-function isBlockedPath(resolved: string): boolean {
-  return BLOCKED_PATHS.some(
-    (blocked) => resolved === blocked || resolved.startsWith(blocked + "/")
-  )
-}
+import { isBlockedPath } from "@/lib/paths"
 
 export async function GET(request: NextRequest) {
   try {

@@ -18,7 +18,7 @@ import {
   Info,
 } from "lucide-react"
 import Link from "next/link"
-import { ThemeToggle } from "@/app/theme-toggle"
+import { ThemeToggle } from "../../theme-toggle"
 
 const aiCopyText = `# openvlt Self-Hosting Guide
 

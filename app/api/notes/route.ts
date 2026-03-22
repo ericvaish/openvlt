@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
     const parentId = searchParams.get("parentId")
     const search = searchParams.get("search")
     const filter = searchParams.get("filter")
+    const limit = Math.min(parseInt(searchParams.get("limit") || "200", 10) || 200, 500)
+    const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10) || 0, 0)
 
     if (search) {
       if (search.length > 500) {
@@ -37,10 +39,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (filter === "all") {
-      return NextResponse.json(listAllNotes(user.id, vaultId))
+      return NextResponse.json(listAllNotes(user.id, vaultId, false, limit, offset))
     }
 
-    const notes = listNotes(user.id, vaultId, parentId)
+    const notes = listNotes(user.id, vaultId, parentId, false, limit, offset)
     return NextResponse.json(notes)
   } catch (error) {
     if (error instanceof AuthError) {

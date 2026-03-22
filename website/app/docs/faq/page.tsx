@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { ArrowLeft, ExternalLink, HelpCircle } from "lucide-react"
+import { ThemeToggle } from "../../theme-toggle"
 
 function Question({
   question,

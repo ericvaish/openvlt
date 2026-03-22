@@ -23,16 +23,7 @@ function parseAliases(raw: string | null | undefined): string[] {
   }
 }
 
-function toMetadata(row: Record<string, unknown>): NoteMetadata {
-  const db = getDb()
-  const tagRows = db
-    .prepare(
-      `SELECT t.name FROM tags t
-       JOIN note_tags nt ON nt.tag_id = t.id
-       WHERE nt.note_id = ?`
-    )
-    .all(row.id as string) as { name: string }[]
-
+function rowToMetadata(row: Record<string, unknown>, tags: string[] = []): NoteMetadata {
   return {
     id: row.id as string,
     title: row.title as string,
@@ -45,13 +36,60 @@ function toMetadata(row: Record<string, unknown>): NoteMetadata {
     trashedAt: (row.trashed_at as string) || null,
     isFavorite: (row.is_favorite as number) === 1,
     isLocked: (row.is_locked as number) === 1,
-    tags: tagRows.map((t) => t.name),
+    tags,
     version: (row.version as number) ?? 1,
     noteType: (row.note_type as NoteType) ?? "markdown",
     icon: (row.icon as string) || null,
     coverImage: (row.cover_image as string) || null,
     aliases: parseAliases(row.aliases as string | null),
   }
+}
+
+/** Load tags for a single note (used for single-note fetches) */
+function getTagsForNote(noteId: string): string[] {
+  const db = getDb()
+  const tagRows = db
+    .prepare(
+      `SELECT t.name FROM tags t
+       JOIN note_tags nt ON nt.tag_id = t.id
+       WHERE nt.note_id = ?`
+    )
+    .all(noteId) as { name: string }[]
+  return tagRows.map((t) => t.name)
+}
+
+/** Single note -> metadata (1 tag query) */
+function toMetadata(row: Record<string, unknown>): NoteMetadata {
+  return rowToMetadata(row, getTagsForNote(row.id as string))
+}
+
+/** Batch convert rows to metadata with a single tag query for all notes */
+function toMetadataBatch(rows: Record<string, unknown>[]): NoteMetadata[] {
+  if (rows.length === 0) return []
+  const db = getDb()
+  const noteIds = rows.map((r) => r.id as string)
+
+  // Single query to fetch all tags for all notes in the batch
+  const placeholders = noteIds.map(() => "?").join(",")
+  const tagRows = db
+    .prepare(
+      `SELECT nt.note_id, t.name FROM tags t
+       JOIN note_tags nt ON nt.tag_id = t.id
+       WHERE nt.note_id IN (${placeholders})`
+    )
+    .all(...noteIds) as { note_id: string; name: string }[]
+
+  // Group tags by note ID
+  const tagMap = new Map<string, string[]>()
+  for (const t of tagRows) {
+    const arr = tagMap.get(t.note_id)
+    if (arr) arr.push(t.name)
+    else tagMap.set(t.note_id, [t.name])
+  }
+
+  return rows.map((row) =>
+    rowToMetadata(row, tagMap.get(row.id as string) ?? [])
+  )
 }
 
 export function createNote(
@@ -783,7 +821,9 @@ export function listNotes(
   userId: string,
   vaultId: string,
   parentId: string | null = null,
-  includeTrash: boolean = false
+  includeTrash: boolean = false,
+  limit: number = 200,
+  offset: number = 0
 ): NoteMetadata[] {
   const db = getDb()
   let query: string
@@ -791,35 +831,37 @@ export function listNotes(
 
   if (parentId) {
     query = includeTrash
-      ? "SELECT * FROM notes WHERE parent_id = ? AND user_id = ? AND vault_id = ? ORDER BY updated_at DESC"
-      : "SELECT * FROM notes WHERE parent_id = ? AND user_id = ? AND vault_id = ? AND is_trashed = 0 ORDER BY updated_at DESC"
-    params = [parentId, userId, vaultId]
+      ? "SELECT * FROM notes WHERE parent_id = ? AND user_id = ? AND vault_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+      : "SELECT * FROM notes WHERE parent_id = ? AND user_id = ? AND vault_id = ? AND is_trashed = 0 ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+    params = [parentId, userId, vaultId, limit, offset]
   } else {
     query = includeTrash
-      ? "SELECT * FROM notes WHERE parent_id IS NULL AND user_id = ? AND vault_id = ? ORDER BY updated_at DESC"
-      : "SELECT * FROM notes WHERE parent_id IS NULL AND user_id = ? AND vault_id = ? AND is_trashed = 0 ORDER BY updated_at DESC"
-    params = [userId, vaultId]
+      ? "SELECT * FROM notes WHERE parent_id IS NULL AND user_id = ? AND vault_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+      : "SELECT * FROM notes WHERE parent_id IS NULL AND user_id = ? AND vault_id = ? AND is_trashed = 0 ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+    params = [userId, vaultId, limit, offset]
   }
 
   const rows = db.prepare(query).all(...params) as Record<string, unknown>[]
-  return rows.map(toMetadata)
+  return toMetadataBatch(rows)
 }
 
 export function listAllNotes(
   userId: string,
   vaultId: string,
-  includeTrash: boolean = false
+  includeTrash: boolean = false,
+  limit: number = 200,
+  offset: number = 0
 ): NoteMetadata[] {
   const db = getDb()
   const query = includeTrash
-    ? "SELECT * FROM notes WHERE user_id = ? AND vault_id = ? ORDER BY updated_at DESC"
-    : "SELECT * FROM notes WHERE user_id = ? AND vault_id = ? AND is_trashed = 0 ORDER BY updated_at DESC"
+    ? "SELECT * FROM notes WHERE user_id = ? AND vault_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+    : "SELECT * FROM notes WHERE user_id = ? AND vault_id = ? AND is_trashed = 0 ORDER BY updated_at DESC LIMIT ? OFFSET ?"
 
-  const rows = db.prepare(query).all(userId, vaultId) as Record<
+  const rows = db.prepare(query).all(userId, vaultId, limit, offset) as Record<
     string,
     unknown
   >[]
-  return rows.map(toMetadata)
+  return toMetadataBatch(rows)
 }
 
 export function listTrashedNotes(
@@ -835,7 +877,7 @@ export function listTrashedNotes(
       "SELECT * FROM notes WHERE is_trashed = 1 AND user_id = ? AND vault_id = ? ORDER BY trashed_at DESC"
     )
     .all(userId, vaultId) as Record<string, unknown>[]
-  return rows.map(toMetadata)
+  return toMetadataBatch(rows)
 }
 
 export function listFavoriteNotes(
@@ -848,7 +890,7 @@ export function listFavoriteNotes(
       "SELECT * FROM notes WHERE is_favorite = 1 AND is_trashed = 0 AND user_id = ? AND vault_id = ? ORDER BY updated_at DESC"
     )
     .all(userId, vaultId) as Record<string, unknown>[]
-  return rows.map(toMetadata)
+  return toMetadataBatch(rows)
 }
 
 export function searchNotes(
@@ -867,7 +909,7 @@ export function searchNotes(
        ORDER BY bm25(notes_fts, 10.0, 1.0)`
     )
     .all(ftsQuery, userId, vaultId) as Record<string, unknown>[]
-  return rows.map(toMetadata)
+  return toMetadataBatch(rows)
 }
 
 export interface SearchResultWithSnippet {
@@ -930,7 +972,7 @@ function buildFtsQuery(raw: string): string {
 
 /**
  * Find notes that link to the given note (linked) or mention its title (unlinked).
- * Scans note content for [[title]] wiki-links, /notes/{id} references, and plain title mentions.
+ * Uses FTS index for fast candidate filtering, then verifies with targeted file reads.
  */
 export function getBacklinks(
   noteId: string,
@@ -948,28 +990,54 @@ export function getBacklinks(
 
   if (!target) return []
 
-  const allNotes = db
-    .prepare(
-      "SELECT id, title, file_path FROM notes WHERE id != ? AND is_trashed = 0 AND user_id = ? AND vault_id = ?"
-    )
-    .all(noteId, userId, vaultId) as {
-    id: string
-    title: string
-    file_path: string
-  }[]
+  const aliases = parseAliases(target.aliases)
 
+  // Build FTS search terms: title, aliases, and note ID
+  // Use FTS to find candidate notes instead of reading every file from disk
+  const searchTerms = [target.title, noteId, ...aliases].filter((t) => t.length >= 3)
+  if (searchTerms.length === 0) return []
+
+  // Query FTS for candidates matching any of the search terms
+  const candidateIds = new Set<string>()
+  for (const term of searchTerms) {
+    // Sanitize term for FTS: remove special chars, wrap in quotes
+    const safeTerm = term.replace(/[^\w\u00C0-\u024F-]/g, " ").trim()
+    if (!safeTerm) continue
+    try {
+      const ftsRows = db
+        .prepare(
+          `SELECT n.id FROM notes n
+           JOIN notes_fts fts ON fts.rowid = n.rowid
+           WHERE notes_fts MATCH ? AND n.id != ? AND n.is_trashed = 0 AND n.user_id = ? AND n.vault_id = ?
+           LIMIT 200`
+        )
+        .all(`"${safeTerm}"`, noteId, userId, vaultId) as { id: string }[]
+      for (const r of ftsRows) candidateIds.add(r.id)
+    } catch {
+      // FTS query may fail on certain inputs, fall through
+    }
+  }
+
+  if (candidateIds.size === 0) return []
+
+  // Only read files for candidates (not all notes)
   const results: { id: string; title: string; linked: boolean }[] = []
   const titleLower = target.title.toLowerCase()
-  const aliases = parseAliases(target.aliases)
   const aliasesLower = aliases.map((a) => a.toLowerCase())
 
-  for (const note of allNotes) {
+  const placeholders = [...candidateIds].map(() => "?").join(",")
+  const candidates = db
+    .prepare(
+      `SELECT id, title, file_path FROM notes WHERE id IN (${placeholders})`
+    )
+    .all(...candidateIds) as { id: string; title: string; file_path: string }[]
+
+  for (const note of candidates) {
     try {
       const content = fs.readFileSync(
         safeResolvePath(vaultRoot, note.file_path),
         "utf-8"
       )
-      // Check for wiki-links using title or any alias
       const hasWikiLink =
         content.includes(`[[${target.title}]]`) ||
         content.includes(noteId) ||
@@ -978,7 +1046,6 @@ export function getBacklinks(
       if (hasWikiLink) {
         results.push({ id: note.id, title: note.title, linked: true })
       } else {
-        // Check for unlinked mentions of title or aliases
         const contentLower = content.toLowerCase()
         const hasMention =
           (titleLower.length >= 3 && contentLower.includes(titleLower)) ||
