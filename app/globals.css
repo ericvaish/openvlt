@@ -763,13 +763,15 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
   margin: 2em 0;
-  max-width: 100%;
+  margin-right: calc(-1 * var(--editor-right));
+  padding-right: var(--editor-right);
   -webkit-overflow-scrolling: touch;
 }
 
 .tiptap table {
   border-collapse: collapse;
-  width: auto;
+  table-layout: fixed;
+  width: 100%;
 }
 
 /* The EditorContent wrapper needs relative positioning for table control buttons */

@@ -69,7 +69,12 @@ export function useSidebarData() {
   } | null>(null)
   const [sidebarMode, setSidebarMode] = React.useState<
     "simple" | "advanced" | "card"
-  >("simple")
+  >(() => {
+    if (typeof window === "undefined") return "simple"
+    const stored = localStorage.getItem("openvlt:sidebar-mode")
+    if (stored === "advanced" || stored === "card") return stored
+    return "simple"
+  })
   const { setPanels: setCardPanels, reset: resetCardPanels } =
     useCardModeStore()
 
@@ -81,15 +86,7 @@ export function useSidebarData() {
   }, [])
 
   React.useEffect(() => {
-    const stored = localStorage.getItem("openvlt:sidebar-mode") as
-      | "simple"
-      | "advanced"
-      | "card"
-      | null
-    if (stored === "advanced" || stored === "card") {
-      setSidebarMode(stored)
-    }
-    if (stored === "card") {
+    if (sidebarMode === "card") {
       const cardState = localStorage.getItem("openvlt:card-mode-panels")
       if (!cardState || JSON.parse(cardState).panels?.length === 0) {
         setCardPanels([
@@ -97,7 +94,7 @@ export function useSidebarData() {
         ])
       }
     }
-  }, [setCardPanels])
+  }, [setCardPanels, sidebarMode])
 
   const sidebarModeRef = React.useRef(sidebarMode)
   sidebarModeRef.current = sidebarMode
