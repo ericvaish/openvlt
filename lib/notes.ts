@@ -208,17 +208,25 @@ export function createNote(
     >
   )
 
-  recordStructureEvent(vaultId, userId, "note_created", "note", id, null, {
-    title,
-    filePath: filePath,
-    parentId,
-  })
+  try {
+    recordStructureEvent(vaultId, userId, "note_created", "note", id, null, {
+      title,
+      filePath: filePath,
+      parentId,
+    })
+  } catch (e) {
+    console.error("[notes] recordStructureEvent failed (create):", e)
+  }
 
-  appendSyncLog(vaultId, "note", id, "create", {
-    title,
-    filePath,
-    parentId,
-  }, hashContent(fileContent))
+  try {
+    appendSyncLog(vaultId, "note", id, "create", {
+      title,
+      filePath,
+      parentId,
+    }, hashContent(fileContent))
+  } catch (e) {
+    console.error("[notes] appendSyncLog failed (create):", e)
+  }
 
   return metadata
 }
@@ -357,9 +365,9 @@ export function updateNoteContent(
          WHERE rowid = (SELECT rowid FROM notes WHERE id = ?)`
       ).run(row.title, mergeResult.content, id)
 
-      appendSyncLog(vaultId, "note", id, "update", {
+      try { appendSyncLog(vaultId, "note", id, "update", {
         title: row.title,
-      }, hashContent(rawForDisk))
+      }, hashContent(rawForDisk)) } catch {}
 
       // Sync frontmatter properties to index
       try { syncNoteProperties(id, userId, vaultId) } catch {}
@@ -436,9 +444,9 @@ export function updateNoteContent(
      WHERE rowid = (SELECT rowid FROM notes WHERE id = ?)`
   ).run(row.title, ftsContent, id)
 
-  appendSyncLog(vaultId, "note", id, "update", {
+  try { appendSyncLog(vaultId, "note", id, "update", {
     title: row.title,
-  }, hashContent(rawForDisk))
+  }, hashContent(rawForDisk)) } catch {}
 
   // Sync frontmatter properties to index
   try { syncNoteProperties(id, userId, vaultId) } catch {}
@@ -490,28 +498,23 @@ export function updateNoteTitle(
     "UPDATE notes SET title = ?, file_path = ?, updated_at = ? WHERE id = ? AND user_id = ? AND vault_id = ?"
   ).run(title, newFilePath, now, id, userId, vaultId)
 
-  recordStructureEvent(
-    vaultId,
-    userId,
-    "note_renamed",
-    "note",
-    id,
-    {
-      title: oldTitle,
-      filePath: row.file_path,
-    },
-    {
-      title,
-      filePath: newFilePath,
-    }
-  )
+  try {
+    recordStructureEvent(
+      vaultId, userId, "note_renamed", "note", id,
+      { title: oldTitle, filePath: row.file_path },
+      { title, filePath: newFilePath }
+    )
+  } catch (e) {
+    console.error("[notes] recordStructureEvent failed (rename):", e)
+  }
 
-  appendSyncLog(vaultId, "note", id, "rename", {
-    oldTitle,
-    newTitle: title,
-    oldFilePath: row.file_path,
-    newFilePath,
-  })
+  try {
+    appendSyncLog(vaultId, "note", id, "rename", {
+      oldTitle, newTitle: title, oldFilePath: row.file_path, newFilePath,
+    })
+  } catch (e) {
+    console.error("[notes] appendSyncLog failed (rename):", e)
+  }
 }
 
 export function updateNoteIcon(
@@ -601,52 +604,46 @@ export function deleteNote(
       // File already gone
     }
 
-    recordStructureEvent(
-      vaultId,
-      userId,
-      "note_deleted",
-      "note",
-      id,
-      {
-        title: noteInfo.title,
-        filePath: row.file_path,
-        parentId: noteInfo.parent_id,
-      },
-      null
-    )
+    try {
+      recordStructureEvent(
+        vaultId, userId, "note_deleted", "note", id,
+        { title: noteInfo.title, filePath: row.file_path, parentId: noteInfo.parent_id },
+        null
+      )
+    } catch (e) {
+      console.error("[notes] recordStructureEvent failed (delete):", e)
+    }
 
-    appendSyncLog(vaultId, "note", id, "delete", {
-      title: noteInfo.title,
-      filePath: row.file_path,
-      parentId: noteInfo.parent_id,
-    })
+    try {
+      appendSyncLog(vaultId, "note", id, "delete", {
+        title: noteInfo.title, filePath: row.file_path, parentId: noteInfo.parent_id,
+      })
+    } catch (e) {
+      console.error("[notes] appendSyncLog failed (delete):", e)
+    }
   } else {
     const now = new Date().toISOString()
     db.prepare(
       "UPDATE notes SET is_trashed = 1, trashed_at = ? WHERE id = ? AND user_id = ? AND vault_id = ?"
     ).run(now, id, userId, vaultId)
 
-    recordStructureEvent(
-      vaultId,
-      userId,
-      "note_trashed",
-      "note",
-      id,
-      {
-        title: noteInfo.title,
-        filePath: row.file_path,
-        parentId: noteInfo.parent_id,
-        isTrashed: false,
-      },
-      {
-        isTrashed: true,
-      }
-    )
+    try {
+      recordStructureEvent(
+        vaultId, userId, "note_trashed", "note", id,
+        { title: noteInfo.title, filePath: row.file_path, parentId: noteInfo.parent_id, isTrashed: false },
+        { isTrashed: true }
+      )
+    } catch (e) {
+      console.error("[notes] recordStructureEvent failed (trash):", e)
+    }
 
-    appendSyncLog(vaultId, "note", id, "trash", {
-      title: noteInfo.title,
-      filePath: row.file_path,
-    })
+    try {
+      appendSyncLog(vaultId, "note", id, "trash", {
+        title: noteInfo.title, filePath: row.file_path,
+      })
+    } catch (e) {
+      console.error("[notes] appendSyncLog failed (trash):", e)
+    }
   }
 }
 
@@ -656,21 +653,18 @@ export function restoreNote(id: string, userId: string, vaultId: string): void {
     "UPDATE notes SET is_trashed = 0, trashed_at = NULL WHERE id = ? AND user_id = ? AND vault_id = ?"
   ).run(id, userId, vaultId)
 
-  recordStructureEvent(
-    vaultId,
-    userId,
-    "note_restored",
-    "note",
-    id,
-    {
-      isTrashed: true,
-    },
-    {
-      isTrashed: false,
-    }
-  )
+  try {
+    recordStructureEvent(
+      vaultId, userId, "note_restored", "note", id,
+      { isTrashed: true }, { isTrashed: false }
+    )
+  } catch (e) {
+    console.error("[notes] recordStructureEvent failed (restore):", e)
+  }
 
-  appendSyncLog(vaultId, "note", id, "restore", null)
+  try { appendSyncLog(vaultId, "note", id, "restore", null) } catch (e) {
+    console.error("[notes] appendSyncLog failed (restore):", e)
+  }
 }
 
 export function toggleFavorite(
@@ -692,9 +686,13 @@ export function toggleFavorite(
     "UPDATE notes SET is_favorite = ? WHERE id = ? AND user_id = ? AND vault_id = ?"
   ).run(newValue, id, userId, vaultId)
 
-  appendSyncLog(vaultId, "note", id, "favorite", {
-    isFavorite: newValue === 1,
-  })
+  try {
+    appendSyncLog(vaultId, "note", id, "favorite", {
+      isFavorite: newValue === 1,
+    })
+  } catch (e) {
+    console.error("[notes] appendSyncLog failed (favorite):", e)
+  }
 
   return newValue === 1
 }
@@ -767,28 +765,23 @@ export function moveNote(
     "UPDATE notes SET parent_id = ?, file_path = ?, updated_at = ? WHERE id = ?"
   ).run(newParentId, newFilePath, now, id)
 
-  recordStructureEvent(
-    vaultId,
-    userId,
-    "note_moved",
-    "note",
-    id,
-    {
-      parentId: oldParentId,
-      filePath: oldFilePath,
-    },
-    {
-      parentId: newParentId,
-      filePath: newFilePath,
-    }
-  )
+  try {
+    recordStructureEvent(
+      vaultId, userId, "note_moved", "note", id,
+      { parentId: oldParentId, filePath: oldFilePath },
+      { parentId: newParentId, filePath: newFilePath }
+    )
+  } catch (e) {
+    console.error("[notes] recordStructureEvent failed (move):", e)
+  }
 
-  appendSyncLog(vaultId, "note", id, "move", {
-    oldParentId,
-    newParentId,
-    oldFilePath,
-    newFilePath,
-  })
+  try {
+    appendSyncLog(vaultId, "note", id, "move", {
+      oldParentId, newParentId, oldFilePath, newFilePath,
+    })
+  } catch (e) {
+    console.error("[notes] appendSyncLog failed (move):", e)
+  }
 
   return toMetadata(
     db.prepare("SELECT * FROM notes WHERE id = ?").get(id) as Record<
