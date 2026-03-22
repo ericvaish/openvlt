@@ -6,11 +6,11 @@ const fontSans = Geist({ subsets: ["latin"], variable: "--font-sans" })
 const fontMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" })
 
 export const metadata: Metadata = {
-  title: "openvlt — open source, self-hosted, encrypted notes app",
+  title: "openvlt: open source, self-hosted, encrypted notes app",
   description:
     "A beautiful notes app that stores your thoughts as plain markdown files on your own server. End-to-end encrypted, works offline, and completely free and open source.",
   openGraph: {
-    title: "openvlt — open source, self-hosted, encrypted notes app",
+    title: "openvlt: open source, self-hosted, encrypted notes app",
     description:
       "A beautiful notes app that stores your thoughts as plain markdown files on your own server. End-to-end encrypted, works offline, and completely free and open source.",
     url: "https://openvlt.com",
@@ -21,13 +21,13 @@ export const metadata: Metadata = {
         url: "https://openvlt.com/og.png",
         width: 1200,
         height: 630,
-        alt: "openvlt — open source, self-hosted, encrypted markdown notes",
+        alt: "openvlt: open source, self-hosted, encrypted markdown notes",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "openvlt — open source, self-hosted, encrypted notes app",
+    title: "openvlt: open source, self-hosted, encrypted notes app",
     description:
       "A beautiful notes app that stores your thoughts as plain markdown files on your own server. End-to-end encrypted, works offline, and completely free and open source.",
     images: ["https://openvlt.com/og.png"],
