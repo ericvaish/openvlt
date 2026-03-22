@@ -875,6 +875,60 @@ body {
   color: var(--primary);
 }
 
+/* ── Table drag handles ── */
+.table-drag-handle {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--background);
+  color: var(--muted-foreground);
+  cursor: grab;
+  padding: 0;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.table-drag-handle.visible {
+  opacity: 0.5;
+}
+
+.table-drag-handle:hover {
+  opacity: 1 !important;
+  background: var(--accent);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.table-drag-handle:active {
+  cursor: grabbing;
+}
+
+.table-drop-indicator {
+  position: absolute;
+  z-index: 3;
+  background: var(--primary);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.table-drag-highlight {
+  position: absolute;
+  z-index: 1;
+  background: var(--primary);
+  opacity: 0.08;
+  pointer-events: none;
+  border-radius: 2px;
+}
+
 /* Image styles */
 .tiptap img {
   max-width: 100%;

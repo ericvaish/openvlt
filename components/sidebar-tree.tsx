@@ -765,8 +765,14 @@ function TreeItem({
         destructive: true,
       })
       if (!confirmed) return
-      await fetch(`/api/notes/${node.id}`, { method: "DELETE" })
-      closeTab(node.id)
+      if (node.id.startsWith("file:")) {
+        // Orphaned file on disk with no DB record — delete via vault-file endpoint
+        const filePath = node.id.slice(5)
+        await fetch(`/api/attachments/vault-file?path=${encodeURIComponent(filePath)}`, { method: "DELETE" })
+      } else {
+        await fetch(`/api/notes/${node.id}`, { method: "DELETE" })
+        closeTab(node.id)
+      }
     }
     onRefresh()
   }

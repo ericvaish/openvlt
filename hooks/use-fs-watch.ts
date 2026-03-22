@@ -22,6 +22,7 @@ export function useFsWatch() {
       es.onmessage = (event) => {
         if (event.data === "changed") {
           window.dispatchEvent(new Event("openvlt:tree-refresh"))
+          window.dispatchEvent(new Event("openvlt:vault-changed"))
         }
       }
 

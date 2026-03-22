@@ -537,7 +537,7 @@ export function getAllFilesTree(
   // Build lookups from path to DB ID so expanded state is preserved
   const noteRows = db
     .prepare(
-      "SELECT id, file_path FROM notes WHERE is_trashed = 0 AND user_id = ? AND vault_id = ?"
+      "SELECT id, file_path FROM notes WHERE user_id = ? AND vault_id = ?"
     )
     .all(userId, vaultId) as { id: string; file_path: string }[]
   const noteByPath = new Map<string, string>()

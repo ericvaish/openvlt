@@ -194,6 +194,49 @@ export function NoteEditor({
     return () => window.removeEventListener("openvlt:wiki-link-click", handler)
   }, [openTab])
 
+  // Live reload: when vault changes on disk (e.g. from peer sync),
+  // check if this note's version changed and reload content if so.
+  React.useEffect(() => {
+    let checking = false
+    const handler = async () => {
+      if (checking || !editorRef.current) return
+      checking = true
+      try {
+        const res = await fetch(`/api/notes/${noteId}`)
+        if (!res.ok) return
+        const data = await res.json()
+        const remoteVersion = data.metadata?.version
+        if (remoteVersion && remoteVersion > versionRef.current) {
+          versionRef.current = remoteVersion
+          lastSavedContentRef.current = data.content
+          const editor = editorRef.current
+          // Only update if the content actually differs from what's in the editor
+          const currentContent = (editor as any).getMarkdown?.() || ""
+          if (data.content !== currentContent) {
+            const { from, to } = editor.state.selection
+            editor.commands.setContent(data.content, {
+              contentType: "markdown",
+            })
+            // Try to restore cursor position
+            try {
+              const maxPos = editor.state.doc.content.size
+              editor.commands.setTextSelection({
+                from: Math.min(from, maxPos),
+                to: Math.min(to, maxPos),
+              })
+            } catch {}
+          }
+        }
+      } catch {
+        // Silently ignore fetch errors
+      } finally {
+        checking = false
+      }
+    }
+    window.addEventListener("openvlt:vault-changed", handler)
+    return () => window.removeEventListener("openvlt:vault-changed", handler)
+  }, [noteId])
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [

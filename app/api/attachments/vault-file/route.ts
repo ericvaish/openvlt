@@ -95,3 +95,38 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+/**
+ * Delete an orphaned file from the vault (no DB record).
+ * Used when "show all files" mode finds a file on disk that has no matching note.
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { vaultId } = await requireAuthWithVault()
+    const filePath = request.nextUrl.searchParams.get("path")
+
+    if (!filePath) {
+      return NextResponse.json({ error: "path is required" }, { status: 400 })
+    }
+
+    const vaultRoot = getVaultPath(vaultId)
+    const fullPath = safeResolvePath(vaultRoot, filePath)
+
+    if (!fs.existsSync(fullPath)) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 })
+    }
+
+    const stat = fs.statSync(fullPath)
+    if (!stat.isFile()) {
+      return NextResponse.json({ error: "Not a file" }, { status: 400 })
+    }
+
+    fs.unlinkSync(fullPath)
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    )
+  }
+}
