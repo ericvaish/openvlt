@@ -768,6 +768,12 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Sticky headers: use overflow-clip so sticky works against the outer scroll container.
+   overflow:clip prevents content bleed without creating a new scroll context. */
+.tiptap[data-sticky-header="true"] .tableWrapper {
+  overflow: clip;
+}
+
 .tiptap table {
   border-collapse: collapse;
   table-layout: fixed;
