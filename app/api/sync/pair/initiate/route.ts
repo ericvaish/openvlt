@@ -21,8 +21,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Normalize URL: remove trailing slashes
-    const remoteUrl = rawUrl.replace(/\/+$/, "")
+    // Normalize URL: extract origin only (strip any path, trailing slashes)
+    let remoteUrl: string
+    try {
+      const parsed = new URL(rawUrl)
+      remoteUrl = parsed.origin
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid URL. Enter the base URL of the remote instance (e.g. https://notes.example.com)" },
+        { status: 400 }
+      )
+    }
 
     // Step 1: Authenticate with the remote instance
     let loginRes: Response

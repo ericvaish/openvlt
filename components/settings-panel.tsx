@@ -1835,7 +1835,7 @@ export function SettingsPanel() {
                         type="url"
                         value={pairUrl}
                         onChange={(e) => setPairUrl(e.target.value)}
-                        placeholder="https://other-instance.example.com:3456"
+                        placeholder="https://notes.example.com"
                         className="h-9 w-full rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
                       />
                       <div className="flex flex-col gap-2 sm:flex-row">
