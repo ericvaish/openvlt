@@ -92,10 +92,18 @@ export async function POST() {
         message: "Update complete. The page will reload shortly.",
         logs,
       })
-    } catch (error) {
-      logs.push(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
-      )
+    } catch (error: unknown) {
+      // execSync errors include stdout/stderr with actual build output
+      const execError = error as { stderr?: string; stdout?: string; message?: string }
+      const detail =
+        execError.stderr?.trim() ||
+        execError.stdout?.trim() ||
+        execError.message ||
+        "Unknown error"
+      // Include the last meaningful lines so the user can see what failed
+      const lines = detail.split("\n").filter((l: string) => l.trim())
+      const summary = lines.slice(-20).join("\n")
+      logs.push(`Error:\n${summary}`)
       return NextResponse.json(
         {
           success: false,
