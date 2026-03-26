@@ -126,10 +126,15 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
   const editorRef = React.useRef<any>(null)
 
   // Parse initial data — extract document snapshot and settings
+  // Reset schema to empty sequences so tldraw re-migrates all records from
+  // scratch instead of failing with "Incompatible schema?" on version mismatches
   const { snapshot, initialSettings } = React.useMemo(() => {
     try {
       const data = JSON.parse(initialData)
       const doc = data.document && Object.keys(data.document).length > 0 ? data.document : undefined
+      if (doc?.schema) {
+        doc.schema = { schemaVersion: 2, sequences: {} }
+      }
       const settings = data.settings as Partial<CanvasSettings> | undefined
       return { snapshot: doc, initialSettings: settings }
     } catch {

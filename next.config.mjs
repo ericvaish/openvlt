@@ -26,6 +26,11 @@ const nextConfig = {
     NEXT_PUBLIC_COMMIT_HASH: gitInfo.commitHash,
     NEXT_PUBLIC_COMMIT_DATE: gitInfo.commitDate,
   },
+  async rewrites() {
+    return [
+      { source: "/favicon.ico", destination: "/logo.svg" },
+    ]
+  },
   async headers() {
     return [
       {
