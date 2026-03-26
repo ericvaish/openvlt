@@ -1381,6 +1381,7 @@ export function CanvasEditor({ noteId, initialData, onEditorReady }: CanvasEdito
         }
       `}</style>
         <TldrawComponent
+          licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY}
           snapshot={snapshot}
           shapeUtils={customShapeUtils}
           tools={customTools}

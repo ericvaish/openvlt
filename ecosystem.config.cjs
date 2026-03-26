@@ -2,7 +2,8 @@ module.exports = {
   apps: [
     {
       name: "openvlt",
-      script: "server.js",
+      script: "node_modules/.bin/next",
+      args: "start -p " + (process.env.OPENVLT_PORT || 3456),
       cwd: __dirname,
       env: {
         NODE_ENV: "production",

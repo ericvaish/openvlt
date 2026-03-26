@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const CACHE_VERSION = "v2"
+const CACHE_VERSION = "v3"
 const SHELL_CACHE = `openvlt-shell-${CACHE_VERSION}`
 const STATIC_CACHE = `openvlt-static-${CACHE_VERSION}`
 const API_CACHE = `openvlt-api-${CACHE_VERSION}`
