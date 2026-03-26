@@ -6,6 +6,7 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "next dev --turbopack",
+    "postinstall": "node scripts/patch-tldraw-dev.js",
     "build": "next build",
     "start": "next start -p 3456",
     "lint": "eslint",
