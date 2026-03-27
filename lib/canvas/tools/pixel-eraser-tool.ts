@@ -1,15 +1,15 @@
 import { StateNode, createShapeId, type TLShapeId } from "tldraw"
 
 /**
- * Pixel Eraser Tool — erases parts of handwrite strokes where the eraser touches.
- * Splits strokes at erased sections, keeping remaining segments as new shapes.
+ * Pixel Eraser Tool — erases the parts of strokes the eraser touches,
+ * splitting them into remaining segments. Non-handwrite shapes are
+ * deleted whole if the eraser hits their bounds.
  */
 export class PixelEraserTool extends StateNode {
   static override id = "pixel-eraser"
 
   private isActive = false
-  private eraserPath: { x: number; y: number }[] = []
-  private eraserRadius = 10
+  private eraserRadius = 8
   private canvas: HTMLCanvasElement | null = null
   private ctx: CanvasRenderingContext2D | null = null
 
@@ -28,7 +28,7 @@ export class PixelEraserTool extends StateNode {
 
   private initCanvas() {
     if (this.canvas) return
-    const container = document.querySelector(".canvas-editor-wrapper .tl-container")
+    const container = this.editor.getContainer()
     if (container) {
       this.canvas = document.createElement("canvas")
       this.canvas.style.cssText =
@@ -57,55 +57,40 @@ export class PixelEraserTool extends StateNode {
       }
     }
 
-    const { x, y } = this.editor.inputs.currentPagePoint
-    this.eraserPath = [{ x, y }]
     this.isActive = true
-    this.drawEraserCursor()
+    this.eraseAt(this.editor.inputs.currentPagePoint)
+    this.drawCursor()
   }
 
   override onPointerMove() {
     if (!this.isActive) return
-
-    const { x, y } = this.editor.inputs.currentPagePoint
-    this.eraserPath.push({ x, y })
-    this.drawEraserCursor()
+    this.eraseAt(this.editor.inputs.currentPagePoint)
+    this.drawCursor()
   }
 
   override onPointerUp() {
     if (!this.isActive) return
     this.isActive = false
-
-    // Clear eraser visual
     if (this.ctx && this.canvas) {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
     }
+  }
 
-    // Process all handwrite shapes — check for intersections with eraser path
+  private eraseAt(ep: { x: number; y: number }) {
     const shapes = this.editor.getCurrentPageShapes()
     const zoom = this.editor.getZoomLevel()
-    const radius = this.eraserRadius / zoom // Convert screen radius to page coordinates
+    const radius = this.eraserRadius / zoom
 
-    const shapesToDelete: TLShapeId[] = []
-    const shapesToCreate: Parameters<typeof this.editor.createShape>[0][] = []
+    const toDelete: TLShapeId[] = []
+    const toCreate: Parameters<typeof this.editor.createShape>[0][] = []
 
     for (const shape of shapes) {
-      // For non-handwrite shapes (text, geo, etc.), delete if eraser touches their bounds
       if (shape.type !== "handwrite") {
-        try {
-          const bounds = this.editor.getShapeGeometry(shape).bounds
-          const shapeLeft = shape.x
-          const shapeTop = shape.y
-          const shapeRight = shape.x + bounds.w
-          const shapeBottom = shape.y + bounds.h
-
-          for (const ep of this.eraserPath) {
-            if (ep.x >= shapeLeft - radius && ep.x <= shapeRight + radius &&
-                ep.y >= shapeTop - radius && ep.y <= shapeBottom + radius) {
-              shapesToDelete.push(shape.id)
-              break
-            }
-          }
-        } catch {}
+        // Non-handwrite: delete whole shape if eraser hits bounds
+        const hits = this.editor.getShapesAtPoint(ep, { hitInside: true, margin: radius })
+        if (hits.some(h => h.id === shape.id)) {
+          toDelete.push(shape.id)
+        }
         continue
       }
 
@@ -115,80 +100,75 @@ export class PixelEraserTool extends StateNode {
       } catch { continue }
       if (pts.length < 2) continue
 
-      // Convert points to absolute coordinates
-      const absPts = pts.map(p => ({
-        x: shape.x + p.x,
-        y: shape.y + p.y,
-        z: p.z,
-      }))
-
-      // Find which points are inside the eraser path
+      // Check each point: is it within eraser radius?
       const erased = new Set<number>()
-      for (let i = 0; i < absPts.length; i++) {
-        for (const ep of this.eraserPath) {
-          if (Math.hypot(absPts[i].x - ep.x, absPts[i].y - ep.y) < radius) {
+      for (let i = 0; i < pts.length; i++) {
+        const ax = shape.x + pts[i].x
+        const ay = shape.y + pts[i].y
+        if (Math.hypot(ax - ep.x, ay - ep.y) < radius) {
+          erased.add(i)
+          continue
+        }
+        // Also check segment to next point
+        if (i < pts.length - 1) {
+          const bx = shape.x + pts[i + 1].x
+          const by = shape.y + pts[i + 1].y
+          if (distToSegment(ep, ax, ay, bx, by) < radius) {
             erased.add(i)
-            break
+            erased.add(i + 1)
           }
         }
       }
 
       if (erased.size === 0) continue
 
-      // If all points erased, just delete the shape
-      if (erased.size === absPts.length) {
-        shapesToDelete.push(shape.id)
+      // All erased — just delete
+      if (erased.size >= pts.length) {
+        toDelete.push(shape.id)
         continue
       }
 
-      // Split into segments of non-erased points
+      // Split into contiguous non-erased segments
       const segments: { x: number; y: number; z: number }[][] = []
-      let currentSeg: { x: number; y: number; z: number }[] = []
-
-      for (let i = 0; i < absPts.length; i++) {
+      let seg: { x: number; y: number; z: number }[] = []
+      for (let i = 0; i < pts.length; i++) {
         if (!erased.has(i)) {
-          currentSeg.push(absPts[i])
+          seg.push(pts[i])
         } else {
-          if (currentSeg.length >= 2) {
-            segments.push(currentSeg)
-          }
-          currentSeg = []
+          if (seg.length >= 2) segments.push(seg)
+          seg = []
         }
       }
-      if (currentSeg.length >= 2) {
-        segments.push(currentSeg)
-      }
+      if (seg.length >= 2) segments.push(seg)
 
-      // Delete original shape
-      shapesToDelete.push(shape.id)
+      toDelete.push(shape.id)
 
-      // Create new shapes for remaining segments
-      for (const seg of segments) {
-        const originX = seg[0].x
-        const originY = seg[0].y
-        let minX = 0, minY = 0, maxX = 0, maxY = 0
-
-        const relPts = seg.map(p => {
-          const rx = p.x - originX
-          const ry = p.y - originY
-          minX = Math.min(minX, rx)
-          minY = Math.min(minY, ry)
-          maxX = Math.max(maxX, rx)
-          maxY = Math.max(maxY, ry)
-          return { x: rx, y: ry, z: p.z }
-        })
-
-        shapesToCreate.push({
+      // Create new shapes from remaining segments
+      for (const s of segments) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const p of s) {
+          if (p.x < minX) minX = p.x
+          if (p.y < minY) minY = p.y
+          if (p.x > maxX) maxX = p.x
+          if (p.y > maxY) maxY = p.y
+        }
+        // Normalize points so origin is at top-left of segment bounds
+        const normPts = s.map(p => ({
+          x: p.x - minX,
+          y: p.y - minY,
+          z: p.z,
+        }))
+        toCreate.push({
           id: createShapeId(),
           type: "handwrite",
-          x: originX,
-          y: originY,
+          x: shape.x + minX,
+          y: shape.y + minY,
           props: {
             w: Math.max(1, maxX - minX),
             h: Math.max(1, maxY - minY),
             color: shape.props.color,
             size: shape.props.size,
-            points: JSON.stringify(relPts),
+            points: JSON.stringify(normPts),
             isComplete: true,
             penType: shape.props.penType || "pen",
           },
@@ -196,55 +176,54 @@ export class PixelEraserTool extends StateNode {
       }
     }
 
-    // Apply changes
-    if (shapesToDelete.length > 0) {
-      this.editor.deleteShapes(shapesToDelete)
-    }
-    for (const s of shapesToCreate) {
+    if (toDelete.length > 0) this.editor.deleteShapes(toDelete)
+    const highlighterIds: ReturnType<typeof createShapeId>[] = []
+    for (const s of toCreate) {
       this.editor.createShape(s)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((s as any).props?.penType === "highlighter") {
+        highlighterIds.push(s.id as ReturnType<typeof createShapeId>)
+      }
     }
-
-    this.eraserPath = []
+    if (highlighterIds.length > 0) {
+      this.editor.sendToBack(highlighterIds)
+    }
   }
 
   override onCancel() {
     if (this.ctx && this.canvas) {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
     }
-    this.eraserPath = []
     this.isActive = false
   }
 
-  private drawEraserCursor() {
+  private drawCursor() {
     if (!this.ctx || !this.canvas) return
-
     const sb = this.editor.getViewportScreenBounds()
     const ctx = this.ctx
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
 
-    // Draw eraser circle at current position
-    const last = this.eraserPath[this.eraserPath.length - 1]
-    if (!last) return
-
-    const sp = this.editor.pageToScreen(last)
-    const sx = sp.x - sb.x
-    const sy = sp.y - sb.y
+    const point = this.editor.inputs.currentPagePoint
+    const sp = this.editor.pageToScreen(point)
 
     ctx.strokeStyle = "rgba(100, 100, 100, 0.5)"
     ctx.lineWidth = 1.5
     ctx.beginPath()
-    ctx.arc(sx, sy, this.eraserRadius, 0, Math.PI * 2)
+    ctx.arc(sp.x - sb.x, sp.y - sb.y, this.eraserRadius, 0, Math.PI * 2)
     ctx.stroke()
-
-    // Draw eraser trail
-    if (this.eraserPath.length > 1) {
-      ctx.fillStyle = "rgba(255, 255, 255, 0.3)"
-      for (const p of this.eraserPath) {
-        const screenP = this.editor.pageToScreen(p)
-        ctx.beginPath()
-        ctx.arc(screenP.x - sb.x, screenP.y - sb.y, this.eraserRadius, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    }
   }
+}
+
+function distToSegment(
+  p: { x: number; y: number },
+  ax: number, ay: number,
+  bx: number, by: number
+): number {
+  const dx = bx - ax
+  const dy = by - ay
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return Math.hypot(p.x - ax, p.y - ay)
+  let t = ((p.x - ax) * dx + (p.y - ay) * dy) / lenSq
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(p.x - (ax + t * dx), p.y - (ay + t * dy))
 }
