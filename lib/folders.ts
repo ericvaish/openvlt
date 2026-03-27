@@ -439,6 +439,14 @@ export function getFolderTree(
         }
       }
 
+      // Also exclude trashed note paths so they don't reappear as disk-only files
+      const trashedPaths = db
+        .prepare(
+          "SELECT file_path FROM notes WHERE is_trashed = 1 AND user_id = ? AND vault_id = ?"
+        )
+        .all(userId, vaultId) as { file_path: string }[]
+      for (const t of trashedPaths) knownPaths.add(t.file_path)
+
       // Build a map from folder path → tree node for quick insertion
       const folderNodeByPath = new Map<string, TreeNode>()
       function indexFolders(nodes: TreeNode[], parentPath: string) {
