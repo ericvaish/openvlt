@@ -17,8 +17,6 @@ const PRECACHE_ASSETS = [
 // SSE and streaming endpoints that should never be cached
 const EXCLUDED_PATTERNS = [
   "/api/watch",
-  "/api/sync/stream",
-  "/api/sync/push",
   "/api/ai/chat",
 ]
 

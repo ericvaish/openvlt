@@ -148,7 +148,7 @@ export function ExcalidrawEmbedPicker({
         {/* Left panel: note list or anchor list */}
         <div className="flex w-[280px] flex-col border-r">
           {/* Header */}
-          <div className="flex items-center gap-2 border-b px-3 py-2.5">
+          <div className="flex h-10 items-center gap-2 border-b px-3">
             {selectedNote ? (
               <>
                 <button
@@ -254,7 +254,7 @@ export function ExcalidrawEmbedPicker({
 
         {/* Right panel: preview */}
         <div className="flex flex-1 flex-col">
-          <div className="border-b px-3 py-2.5">
+          <div className="flex h-10 items-center border-b px-3">
             <span className="text-xs font-medium text-muted-foreground">
               Preview
             </span>

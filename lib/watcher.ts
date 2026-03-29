@@ -22,15 +22,6 @@ function notifyListeners(vaultId: string) {
 }
 
 function handleChange(filePath: string) {
-  // Skip files currently being written by the sync engine (echo suppression)
-  try {
-    const { isSyncSuppressed } =
-      require("@/lib/sync/engine") as typeof import("@/lib/sync/engine")
-    if (isSyncSuppressed(filePath)) return
-  } catch {
-    // Sync engine not initialized yet, proceed normally
-  }
-
   // Find which vault this file belongs to
   let matchedVaultId: string | null = null
   for (const [vaultPath, vaultId] of watchedVaults) {

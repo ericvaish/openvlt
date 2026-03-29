@@ -1319,6 +1319,7 @@ function AttachmentItem({
   node: TreeNode
   onRefresh: () => void
 }) {
+  const { openTab } = useTabStore()
   const Icon = getAttachmentIcon(node.mimeType)
   const url = `/api/attachments/${node.id}`
 
@@ -1335,7 +1336,7 @@ function AttachmentItem({
   }
 
   function handleView() {
-    window.open(url, "_blank")
+    openTab(`__attachment_${node.id}__`, node.name)
   }
 
   function handleDownload() {

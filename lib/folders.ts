@@ -398,16 +398,22 @@ export function getFolderTree(
         : note.note_type === "canvas"
           ? ".canvas"
           : ".md"
+    const attachments = attachmentsByNote.get(note.id) || []
+    const isContainer = note.note_type === "markdown"
     const children: TreeNode[] | undefined = advanced
-      ? [
-          {
-            id: `${note.id}:md`,
-            name: `${note.title}${noteExt}`,
-            path: note.file_path,
-            type: "file" as const,
-          },
-          ...(attachmentsByNote.get(note.id) || []),
-        ]
+      ? isContainer
+        ? [
+            {
+              id: `${note.id}:md`,
+              name: `${note.title}${noteExt}`,
+              path: note.file_path,
+              type: "file" as const,
+            },
+            ...attachments,
+          ]
+        : attachments.length > 0
+          ? attachments
+          : undefined
       : undefined
 
     const displayName =

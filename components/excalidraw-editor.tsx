@@ -418,13 +418,24 @@ export function ExcalidrawEditor({ noteId, initialData }: ExcalidrawEditorProps)
       },
     ])
 
-    api.updateScene({
-      elements: [...api.getSceneElements(), ...newElements],
-    })
+    const updatedElements = [...api.getSceneElements(), ...newElements]
+    api.updateScene({ elements: updatedElements })
 
-    // Force Excalidraw to re-validate embeddable elements
-    // Without this, the embed won't render until page refresh
-    setTimeout(() => api.refresh(), 50)
+    // Force Excalidraw to re-validate and render the new embeddable element.
+    // Chain refresh + scrollToContent to ensure the embeddable renderer kicks in.
+    setTimeout(() => {
+      try {
+        api.refresh()
+      } catch {
+        // Fallback: re-apply the scene to force a render cycle
+        api.updateScene({ elements: updatedElements })
+      }
+      // Scroll to the newly added element so it's visible
+      const newEl = newElements[0]
+      if (newEl) {
+        api.scrollToContent(newEl, { fitToContent: true, animate: true })
+      }
+    }, 100)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -22,8 +22,6 @@ import { DeviceStatusPopover } from "@/components/device-status-popover"
 export function SyncStatus() {
   const { isOnline, pendingMutations, syncStatus } = useNetwork()
   const devices = useDeviceHeartbeat()
-  const [lastSync, setLastSync] = React.useState<string | null>(null)
-  const [pairingCount, setPairingCount] = React.useState(0)
   const [backupEnabled, setBackupEnabled] = React.useState(false)
 
   React.useEffect(() => {
@@ -31,29 +29,6 @@ export function SyncStatus() {
 
     async function loadStatus() {
       try {
-        const syncRes = await fetch("/api/sync/settings")
-        if (syncRes.ok) {
-          const data = await syncRes.json()
-          const activePairings =
-            data.pairings?.filter(
-              (p: { isActive: boolean }) => p.isActive
-            ) || []
-          setPairingCount(activePairings.length)
-
-          if (activePairings.length > 0) {
-            const latest = activePairings
-              .filter((p: { lastSyncAt: string | null }) => p.lastSyncAt)
-              .sort(
-                (a: { lastSyncAt: string }, b: { lastSyncAt: string }) =>
-                  new Date(b.lastSyncAt).getTime() -
-                  new Date(a.lastSyncAt).getTime()
-              )[0]
-            if (latest?.lastSyncAt) {
-              setLastSync(latest.lastSyncAt)
-            }
-          }
-        }
-
         const backupRes = await fetch("/api/backup/config")
         if (backupRes.ok) {
           const config = await backupRes.json()
@@ -76,7 +51,7 @@ export function SyncStatus() {
         ? "error"
         : syncStatus === "synced"
           ? "synced"
-          : pairingCount > 0 || backupEnabled
+          : backupEnabled
             ? "synced"
             : "idle"
 
@@ -93,9 +68,7 @@ export function SyncStatus() {
   const statusText = {
     idle: "Sync idle",
     syncing: "Syncing...",
-    synced: lastSync
-      ? `Synced ${new Date(lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-      : "Synced",
+    synced: "Synced",
     error: "Sync error",
     offline: pendingMutations > 0
       ? `Offline (${pendingMutations} pending)`
@@ -106,11 +79,6 @@ export function SyncStatus() {
   if (!isOnline && pendingMutations > 0) {
     details.push(
       `${pendingMutations} change${pendingMutations > 1 ? "s" : ""} waiting to sync`
-    )
-  }
-  if (pairingCount > 0) {
-    details.push(
-      `${pairingCount} peer${pairingCount > 1 ? "s" : ""} connected`
     )
   }
   if (backupEnabled) {

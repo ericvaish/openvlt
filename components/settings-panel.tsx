@@ -33,7 +33,6 @@ import {
   FingerprintIcon,
   CopyIcon,
   SparklesIcon,
-  KeyRoundIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -56,7 +55,7 @@ import {
 } from "@/lib/stores/shortcuts-store"
 import { confirmDialog, promptDialog } from "@/lib/dialogs"
 import { useIsMobile } from "@/hooks/use-mobile"
-import type { User, BackupFrequency, BackupRun, SyncPairing, TwoFactorStatus } from "@/types"
+import type { User, BackupFrequency, BackupRun, TwoFactorStatus } from "@/types"
 import { AISettingsTab } from "@/components/ai-settings"
 import { QRCodeSVG } from "qrcode.react"
 import { startRegistration } from "@simplewebauthn/browser"
@@ -120,6 +119,329 @@ function SectionCard({
         {children}
       </div>
     </section>
+  )
+}
+
+// ── Instance Sync Section ──
+
+interface SyncConnectionStatus {
+  role: "standalone" | "client" | "server"
+  serverUrl: string | null
+  username: string | null
+  connectedAt: string | null
+  lastSyncAt: string | null
+  clientCount: number
+}
+
+function InstanceSyncSection() {
+  const [status, setStatus] = React.useState<SyncConnectionStatus>({
+    role: "standalone",
+    serverUrl: null,
+    username: null,
+    connectedAt: null,
+    lastSyncAt: null,
+    clientCount: 0,
+  })
+  const [serverUrl, setServerUrl] = React.useState("")
+  const [username, setUsername] = React.useState("")
+  const [password, setPassword] = React.useState("")
+  const [loading, setLoading] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    fetch("/api/sync/server-connection")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setStatus(data)
+      })
+      .catch(() => {})
+  }, [])
+
+  async function handleConnect() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sync/server-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serverUrl, username, password }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Connection failed")
+        return
+      }
+      setStatus(data)
+      setServerUrl("")
+      setUsername("")
+      setPassword("")
+      toast.success("Connected to server")
+    } catch {
+      setError("Network error")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDisconnect() {
+    const ok = await confirmDialog({
+      title: "Disconnect from server",
+      description:
+        "Your local copy of all notes will be preserved. You can reconnect later.",
+      confirmLabel: "Disconnect",
+      destructive: true,
+    })
+    if (!ok) return
+
+    const res = await fetch("/api/sync/server-connection", { method: "DELETE" })
+    if (res.ok) {
+      setStatus(await res.json())
+      toast.success("Disconnected. This instance is now standalone.")
+    }
+  }
+
+  async function handlePromote() {
+    const ok = await confirmDialog({
+      title: "Promote to server",
+      description:
+        "This will designate this instance as the primary server. Only do this if your original server is permanently unavailable.",
+      confirmLabel: "Promote",
+    })
+    if (!ok) return
+
+    const res = await fetch("/api/sync/server-connection/promote", {
+      method: "POST",
+    })
+    if (res.ok) {
+      setStatus(await res.json())
+      toast.success("This instance is now the primary server")
+    }
+  }
+
+  const roleBadge = {
+    standalone: (
+      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+        Standalone
+      </span>
+    ),
+    client: (
+      <span className="rounded-full bg-green-500/15 px-2.5 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+        Connected
+      </span>
+    ),
+    server: (
+      <span className="rounded-full bg-blue-500/15 px-2.5 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+        Server
+      </span>
+    ),
+  }[status.role]
+
+  // ── Visual diagram ──
+  const diagram = (() => {
+    if (status.role === "standalone") {
+      return (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-muted/30 p-6">
+          <div className="flex size-14 items-center justify-center rounded-xl bg-muted">
+            <ServerIcon className="size-6 text-muted-foreground" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium">This instance</p>
+            <p className="text-xs text-muted-foreground">
+              Running independently
+            </p>
+          </div>
+        </div>
+      )
+    }
+
+    if (status.role === "client") {
+      return (
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed bg-muted/30 p-6">
+          <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
+            <MonitorIcon className="size-5 text-muted-foreground" />
+          </div>
+          <p className="text-xs font-medium">This instance</p>
+          <div className="flex flex-col items-center gap-0.5">
+            <div className="h-5 w-px bg-border" />
+            <span className="text-[10px] text-muted-foreground">syncs to</span>
+            <div className="h-5 w-px bg-border" />
+          </div>
+          <div className="flex size-12 items-center justify-center rounded-xl bg-blue-500/10">
+            <ServerIcon className="size-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div className="text-center">
+            <p className="text-xs font-medium">{status.serverUrl}</p>
+            <p className="text-[10px] text-muted-foreground">Primary server</p>
+          </div>
+        </div>
+      )
+    }
+
+    // Server mode
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed bg-muted/30 p-6">
+        <div className="flex size-14 items-center justify-center rounded-xl bg-blue-500/10">
+          <ServerIcon className="size-6 text-blue-600 dark:text-blue-400" />
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-medium">This instance</p>
+          <p className="text-xs text-muted-foreground">Primary server</p>
+        </div>
+        {status.clientCount > 0 && (
+          <>
+            <div className="h-5 w-px bg-border" />
+            <div className="flex items-center gap-3">
+              {Array.from({ length: Math.min(status.clientCount, 5) }).map(
+                (_, i) => (
+                  <div
+                    key={i}
+                    className="flex size-10 items-center justify-center rounded-lg bg-muted"
+                  >
+                    <MonitorIcon className="size-4 text-muted-foreground" />
+                  </div>
+                )
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {status.clientCount} device{status.clientCount > 1 ? "s" : ""}{" "}
+              connected
+            </p>
+          </>
+        )}
+      </div>
+    )
+  })()
+
+  return (
+    <SectionCard
+      title="Instance Sync"
+      description="Sync notes across devices"
+      icon={ServerIcon}
+    >
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Instance role</p>
+          {roleBadge}
+        </div>
+
+        {diagram}
+
+        {/* Standalone: show connect form */}
+        {status.role === "standalone" && (
+          <div className="space-y-3 border-t pt-4">
+            <p className="text-sm font-medium">Connect to a server</p>
+            <p className="text-sm text-muted-foreground">
+              Enter the URL and your login credentials for the primary server.
+            </p>
+            <div className="space-y-2">
+              <input
+                type="url"
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+                placeholder="https://your-server.openvlt.com"
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+              />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username"
+                autoComplete="username"
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                autoComplete="current-password"
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+              />
+            </div>
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
+            <Button
+              size="sm"
+              disabled={!serverUrl || !username || !password || loading}
+              onClick={handleConnect}
+            >
+              {loading ? (
+                <LoaderIcon className="mr-2 size-3.5 animate-spin" />
+              ) : (
+                <LinkIcon className="mr-2 size-3.5" />
+              )}
+              Connect
+            </Button>
+
+            <div className="border-t pt-4">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handlePromote}
+              >
+                <AlertTriangleIcon className="mr-2 size-3.5" />
+                Promote to Server
+              </Button>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Only use this if your primary server is permanently unavailable
+                and you want this instance to become the new server.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Client: show connection details + disconnect */}
+        {status.role === "client" && (
+          <div className="space-y-3 border-t pt-4">
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Server</span>
+                <span className="font-medium">{status.serverUrl}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Account</span>
+                <span className="font-medium">{status.username}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Connected since</span>
+                <span>
+                  {status.connectedAt
+                    ? new Date(status.connectedAt).toLocaleDateString()
+                    : "Unknown"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Last sync</span>
+                <span>
+                  {status.lastSyncAt
+                    ? new Date(status.lastSyncAt).toLocaleString()
+                    : "Never"}
+                </span>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDisconnect}
+            >
+              <UnlinkIcon className="mr-2 size-3.5" />
+              Disconnect
+            </Button>
+          </div>
+        )}
+
+        {/* Server: info */}
+        {status.role === "server" && (
+          <div className="space-y-3 border-t pt-4">
+            <p className="text-sm text-muted-foreground">
+              This instance is the primary server. Other openvlt instances can
+              connect to it by entering this server's URL in their settings.
+            </p>
+          </div>
+        )}
+      </div>
+    </SectionCard>
   )
 }
 
@@ -539,39 +861,6 @@ export function SettingsPanel() {
     React.useState<BackupFrequency>("daily")
   const [backupMaxVersions, setBackupMaxVersions] = React.useState("10")
 
-  // Peer Sync state
-  const [syncPeer, setSyncPeer] = React.useState<{
-    id: string
-    displayName: string
-  } | null>(null)
-  const [syncPairings, setSyncPairings] = React.useState<SyncPairing[]>([])
-  const [pairUrl, setPairUrl] = React.useState("")
-  const [pairCode, setPairCode] = React.useState("")
-  const [pairingLoading, setPairingLoading] = React.useState(false)
-  const [generatedCode, setGeneratedCode] = React.useState<string | null>(null)
-  const [codeExpiresAt, setCodeExpiresAt] = React.useState<string | null>(null)
-  const [codeCountdown, setCodeCountdown] = React.useState(0)
-  const [generatingCode, setGeneratingCode] = React.useState(false)
-
-  // Countdown timer for pairing code
-  React.useEffect(() => {
-    if (!codeExpiresAt) return
-    const tick = () => {
-      const remaining = Math.max(
-        0,
-        Math.floor((new Date(codeExpiresAt).getTime() - Date.now()) / 1000)
-      )
-      setCodeCountdown(remaining)
-      if (remaining <= 0) {
-        setGeneratedCode(null)
-        setCodeExpiresAt(null)
-      }
-    }
-    tick()
-    const interval = setInterval(tick, 1000)
-    return () => clearInterval(interval)
-  }, [codeExpiresAt])
-
   React.useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
@@ -619,26 +908,6 @@ export function SettingsPanel() {
     fetch("/api/backup/history")
       .then((r) => (r.ok ? r.json() : []))
       .then(setBackupHistory)
-      .catch(() => {})
-  }, [])
-
-  // Load sync state
-  React.useEffect(() => {
-    fetch("/api/sync/settings")
-      .then((r) => (r.ok ? r.json() : null))
-      .then(
-        (
-          data: {
-            peer: { id: string; displayName: string }
-            pairings: SyncPairing[]
-          } | null
-        ) => {
-          if (data) {
-            setSyncPeer(data.peer)
-            setSyncPairings(data.pairings)
-          }
-        }
-      )
       .catch(() => {})
   }, [])
 
@@ -1449,6 +1718,9 @@ export function SettingsPanel() {
 
             {/* ── Sync Tab ── */}
             <TabsContent value="sync" className="space-y-6">
+              {/* Instance Sync */}
+              <InstanceSyncSection />
+
               {/* Version Retention */}
               <SectionCard
                 title="Version History"
@@ -1783,235 +2055,6 @@ export function SettingsPanel() {
                 </div>
               </SectionCard>
 
-              {/* Peer Sync */}
-              <SectionCard
-                title="Peer Sync"
-                description="Sync notes between openvlt instances"
-                icon={ServerIcon}
-                badge="Alpha"
-              >
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-                      <ServerIcon className="size-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">
-                        {syncPeer?.displayName || "This instance"}
-                      </p>
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {syncPeer?.id
-                          ? `ID: ${syncPeer.id.slice(0, 12)}...`
-                          : "Loading..."}
-                      </p>
-                    </div>
-                  </div>
-
-                  {syncPairings.length > 0 && (
-                    <div className="space-y-2 border-t pt-3">
-                      <p className="text-sm font-medium">
-                        Paired instances
-                      </p>
-                      {syncPairings.map((pairing) => (
-                        <div
-                          key={pairing.id}
-                          className="flex items-center justify-between rounded-md border p-3"
-                        >
-                          <div>
-                            <p className="text-sm font-medium">
-                              {pairing.remoteUrl}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              <span
-                                className={
-                                  pairing.isActive
-                                    ? "text-green-600"
-                                    : "text-muted-foreground"
-                                }
-                              >
-                                {pairing.isActive ? "Active" : "Inactive"}
-                              </span>
-                              {pairing.lastSyncAt && (
-                                <>
-                                  {" "}
-                                  -- Last sync:{" "}
-                                  {new Date(
-                                    pairing.lastSyncAt
-                                  ).toLocaleString()}
-                                </>
-                              )}
-                              {" "}-- Mode: {pairing.syncMode}
-                            </p>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              await fetch("/api/sync/settings", {
-                                method: "PUT",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                },
-                                body: JSON.stringify({
-                                  revokePairingId: pairing.id,
-                                }),
-                              })
-                              setSyncPairings(
-                                syncPairings.filter(
-                                  (p) => p.id !== pairing.id
-                                )
-                              )
-                            }}
-                          >
-                            <UnlinkIcon className="mr-2 size-3.5" />
-                            Unpair
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Generate pairing code (for incoming connections) */}
-                  <div className="space-y-3 border-t pt-3">
-                    <p className="text-sm font-medium">
-                      Allow another instance to connect
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Generate a pairing code and share it with the other
-                      instance. The code expires after 5 minutes.
-                    </p>
-
-                    {generatedCode ? (
-                      <div className="flex flex-col items-center gap-2 rounded-lg border bg-muted/50 p-4">
-                        <p className="text-xs text-muted-foreground">
-                          Pairing code
-                        </p>
-                        <p className="font-mono text-3xl font-bold tracking-[0.3em]">
-                          {generatedCode}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Expires in{" "}
-                          {Math.floor(codeCountdown / 60)}:{String(codeCountdown % 60).padStart(2, "0")}
-                        </p>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={generatingCode}
-                        onClick={async () => {
-                          setGeneratingCode(true)
-                          try {
-                            const res = await fetch(
-                              "/api/sync/pair/code/generate",
-                              { method: "POST" }
-                            )
-                            if (res.ok) {
-                              const data = await res.json()
-                              setGeneratedCode(data.code)
-                              setCodeExpiresAt(data.expiresAt)
-                            }
-                          } catch {} finally {
-                            setGeneratingCode(false)
-                          }
-                        }}
-                      >
-                        {generatingCode ? (
-                          <LoaderIcon className="mr-2 size-3.5 animate-spin" />
-                        ) : (
-                          <KeyRoundIcon className="mr-2 size-3.5" />
-                        )}
-                        Generate Pairing Code
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Connect to another instance (outgoing) */}
-                  <div className="space-y-3 border-t pt-3">
-                    <p className="text-sm font-medium">
-                      Connect to another instance
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Enter the URL and pairing code from the remote instance.
-                    </p>
-                    <div className="space-y-2">
-                      <input
-                        type="url"
-                        value={pairUrl}
-                        onChange={(e) => setPairUrl(e.target.value)}
-                        placeholder="https://notes.example.com"
-                        className="h-9 w-full rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
-                      />
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        value={pairCode}
-                        onChange={(e) =>
-                          setPairCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-                        }
-                        placeholder="6-digit pairing code"
-                        className="h-9 w-full rounded-md border bg-background px-3 font-mono text-sm tracking-widest placeholder:font-sans placeholder:tracking-normal placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
-                      />
-                    </div>
-                    <Button
-                      size="sm"
-                      disabled={
-                        !pairUrl ||
-                        pairCode.length !== 6 ||
-                        pairingLoading
-                      }
-                      onClick={async () => {
-                        setPairingLoading(true)
-                        try {
-                          const res = await fetch(
-                            "/api/sync/pair/code/initiate",
-                            {
-                              method: "POST",
-                              headers: {
-                                "Content-Type": "application/json",
-                              },
-                              body: JSON.stringify({
-                                remoteUrl: pairUrl,
-                                code: pairCode,
-                              }),
-                            }
-                          )
-                          const data = await res.json()
-                          if (!res.ok) {
-                            alert(data.error || "Pairing failed")
-                            return
-                          }
-                          alert(
-                            `Paired with ${data.remotePeerName || "remote instance"}!`
-                          )
-                          const settingsRes =
-                            await fetch("/api/sync/settings")
-                          if (settingsRes.ok) {
-                            const settingsData = await settingsRes.json()
-                            setSyncPairings(settingsData.pairings)
-                          }
-                          setPairUrl("")
-                          setPairCode("")
-                        } catch (err) {
-                          alert(
-                            `Failed to pair: ${err instanceof Error ? err.message : "Unknown error"}`
-                          )
-                        } finally {
-                          setPairingLoading(false)
-                        }
-                      }}
-                    >
-                      {pairingLoading ? (
-                        <LoaderIcon className="mr-2 size-3.5 animate-spin" />
-                      ) : (
-                        <RefreshCwIcon className="mr-2 size-3.5" />
-                      )}
-                      Pair
-                    </Button>
-                  </div>
-                </div>
-              </SectionCard>
             </TabsContent>
 
             {/* ── AI Tab ── */}

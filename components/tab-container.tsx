@@ -9,6 +9,7 @@ import { SettingsPanel } from "@/components/settings-panel"
 import { TrashPanel } from "@/components/trash-panel"
 import { NotesListPanel } from "@/components/notes-list-panel"
 import { DatabaseViewPanel } from "@/components/database/database-view-panel"
+import { FileViewer } from "@/components/file-viewer"
 import { BookmarksListPanel } from "@/components/bookmarks-list-panel"
 import { SearchPanel } from "@/components/search-panel"
 import { SidebarTrigger } from "@/components/ui/sidebar"
@@ -518,6 +519,16 @@ export function TabContainer() {
                 className={tab.noteId === activeTabId ? "h-full" : "hidden"}
               >
                 <SearchPanel />
+              </div>
+            ) : tab.noteId.startsWith("__attachment_") ? (
+              <div
+                key={tab.noteId}
+                className={tab.noteId === activeTabId ? "h-full" : "hidden"}
+              >
+                <FileViewer
+                  attachmentId={tab.noteId.slice("__attachment_".length, -2)}
+                  fileName={tab.title}
+                />
               </div>
             ) : tab.noteId.startsWith("__dbview_") ? (
               <div
