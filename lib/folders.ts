@@ -249,6 +249,27 @@ export function deleteFolder(
   vaultId: string
 ): void {
   const db = getDb()
+
+  // Handle disk-only folders (not in DB, prefixed with "dir:")
+  if (id.startsWith("dir:")) {
+    const relPath = id.slice(4)
+    const vaultRoot = getVaultPath(vaultId)
+    const fullPath = safeResolvePath(vaultRoot, relPath)
+    try {
+      fs.rmSync(fullPath, { recursive: true })
+    } catch {
+      // Directory already gone
+    }
+    // Clean up any DB notes/folders that were inside this path
+    db.prepare(
+      "DELETE FROM notes WHERE file_path LIKE ? AND user_id = ? AND vault_id = ?"
+    ).run(`${relPath}%`, userId, vaultId)
+    db.prepare(
+      "DELETE FROM folders WHERE path LIKE ? AND user_id = ? AND vault_id = ?"
+    ).run(`${relPath}%`, userId, vaultId)
+    return
+  }
+
   const folder = db
     .prepare(
       "SELECT path FROM folders WHERE id = ? AND user_id = ? AND vault_id = ?"
@@ -292,8 +313,7 @@ export function deleteFolder(
 export function getFolderTree(
   userId: string,
   vaultId: string,
-  advanced = false,
-  showAll = false
+  advanced = false
 ): TreeNode[] {
   const db = getDb()
 
@@ -423,103 +443,6 @@ export function getFolderTree(
   }
 
   const tree = buildChildren(null)
-
-  // When showAll is enabled, scan the disk and inject non-DB files into the tree
-  if (showAll) {
-    const vaultRoot = getVaultPath(vaultId)
-    if (fs.existsSync(vaultRoot)) {
-      // Collect all paths already in the DB-based tree so we can skip them
-      const knownPaths = new Set<string>()
-      for (const f of folders) knownPaths.add(f.path)
-      for (const n of notes) knownPaths.add(n.file_path)
-      if (advanced) {
-        // In advanced mode, attachments are already children of notes
-        for (const atts of attachmentsByNote.values()) {
-          for (const att of atts) knownPaths.add(att.path)
-        }
-      }
-
-      // Build a map from folder path → tree node for quick insertion
-      const folderNodeByPath = new Map<string, TreeNode>()
-      function indexFolders(nodes: TreeNode[], parentPath: string) {
-        for (const node of nodes) {
-          if (node.type === "folder") {
-            folderNodeByPath.set(node.path, node)
-            if (node.children) indexFolders(node.children, node.path)
-          }
-        }
-      }
-      // Root level has path ""
-      folderNodeByPath.set("", { id: "__root__", name: "", path: "", type: "folder", children: tree })
-      indexFolders(tree, "")
-
-      // Scan disk directories that correspond to known folders (+ root)
-      function mergeExtraFiles(dirFullPath: string, relativePath: string) {
-        let entries: fs.Dirent[]
-        try {
-          entries = fs.readdirSync(dirFullPath, { withFileTypes: true })
-        } catch {
-          return
-        }
-
-        const parentNode = folderNodeByPath.get(relativePath)
-
-        for (const entry of entries) {
-          if (entry.name.startsWith(".") || HIDDEN_DIRS.has(entry.name)) continue
-
-          const fullPath = path.join(dirFullPath, entry.name)
-          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
-
-          if (entry.isDirectory()) {
-            if (!knownPaths.has(relPath)) {
-              // Untracked directory — add it and recurse into it
-              const dirNode: TreeNode = {
-                id: `dir:${relPath}`,
-                name: entry.name,
-                path: relPath,
-                type: "folder",
-                children: [],
-              }
-              folderNodeByPath.set(relPath, dirNode)
-              if (parentNode?.children) {
-                parentNode.children.push(dirNode)
-              }
-              mergeExtraFiles(fullPath, relPath)
-            } else {
-              // Known (DB) directory — still recurse to find untracked files inside
-              mergeExtraFiles(fullPath, relPath)
-            }
-          } else if (entry.isFile()) {
-            if (!knownPaths.has(relPath)) {
-              // Untracked file — add it to the parent folder
-              const mimeType = getMimeType(entry.name)
-              const fileNode: TreeNode = {
-                id: `file:${relPath}`,
-                name: entry.name,
-                path: relPath,
-                type: "attachment",
-                mimeType,
-              }
-              if (parentNode?.children) {
-                parentNode.children.push(fileNode)
-              }
-            }
-          }
-        }
-
-        // Re-sort after insertions: folders first, then alphabetical
-        if (parentNode?.children) {
-          parentNode.children.sort((a, b) => {
-            if (a.type === "folder" && b.type !== "folder") return -1
-            if (a.type !== "folder" && b.type === "folder") return 1
-            return a.name.localeCompare(b.name)
-          })
-        }
-      }
-
-      mergeExtraFiles(vaultRoot, "")
-    }
-  }
 
   return tree
 }

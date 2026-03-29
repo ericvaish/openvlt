@@ -16,14 +16,12 @@ import {
   PencilRulerIcon,
   TableIcon,
   HomeIcon,
-  EyeIcon,
   SettingsIcon,
   UserIcon,
   LogOutIcon,
   ChevronsUpDownIcon,
   SunIcon,
   MoonIcon,
-  RefreshCwIcon,
 } from "lucide-react"
 import {
   SidebarMenu,
@@ -98,37 +96,6 @@ export function FilesPanel({
               Files
             </span>
             <span className="flex items-center gap-0.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={data.toggleShowAllFiles}
-                    className={`inline-flex size-5 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${
-                      data.showAllFiles ? "text-primary" : "text-sidebar-foreground"
-                    }`}
-                  >
-                    <EyeIcon className="size-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {data.showAllFiles ? "Show notes only" : "Show all files"}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={async () => {
-                      await fetch("/api/vaults/sync", { method: "POST" })
-                      data.fetchTree()
-                    }}
-                    className="inline-flex size-5 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  >
-                    <RefreshCwIcon className="size-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Sync files from disk
-                </TooltipContent>
-              </Tooltip>
               <DropdownMenu>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -143,15 +110,15 @@ export function FilesPanel({
                   <TooltipContent side="bottom">New file</TooltipContent>
                 </Tooltip>
                 <DropdownMenuContent align="end" className="w-44">
-                  <DropdownMenuItem onClick={data.handleCreateNote}>
+                  <DropdownMenuItem onClick={() => data.handleCreateNote()}>
                     <FileTextIcon className="mr-2 size-4" />
                     Markdown
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={data.handleCreateCanvas}>
+                  <DropdownMenuItem onClick={() => data.handleCreateCanvas()}>
                     <PenLineIcon className="mr-2 size-4" />
                     Canvas
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={data.handleCreateExcalidraw}>
+                  <DropdownMenuItem onClick={() => data.handleCreateExcalidraw()}>
                     <PencilRulerIcon className="mr-2 size-4" />
                     Excalidraw
                   </DropdownMenuItem>
@@ -160,7 +127,7 @@ export function FilesPanel({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={data.handleCreateFolder}
+                    onClick={() => data.handleCreateFolder()}
                     className="inline-flex size-5 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   >
                     <FolderPlusIcon className="size-3.5" />
@@ -173,8 +140,7 @@ export function FilesPanel({
           <div className="flex h-8 shrink-0 items-stretch border-y border-border/60 bg-background/40">
             {(
               [
-                { value: "simple", label: "Simple" },
-                { value: "advanced", label: "Advanced" },
+                { value: "advanced", label: "Files" },
                 { value: "card", label: "Card" },
               ] as const
             ).map((tab, i) => {
@@ -220,19 +186,19 @@ export function FilesPanel({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-48">
-        <ContextMenuItem onClick={data.handleCreateNote}>
+        <ContextMenuItem onClick={() => data.handleCreateNote(null)}>
           <FileTextIcon className="mr-2 size-4" />
           New Markdown
         </ContextMenuItem>
-        <ContextMenuItem onClick={data.handleCreateCanvas}>
+        <ContextMenuItem onClick={() => data.handleCreateCanvas(null)}>
           <PenLineIcon className="mr-2 size-4" />
           New Canvas
         </ContextMenuItem>
-        <ContextMenuItem onClick={data.handleCreateExcalidraw}>
+        <ContextMenuItem onClick={() => data.handleCreateExcalidraw(null)}>
           <PencilRulerIcon className="mr-2 size-4" />
           New Excalidraw
         </ContextMenuItem>
-        <ContextMenuItem onClick={data.handleCreateFolder}>
+        <ContextMenuItem onClick={() => data.handleCreateFolder(null)}>
           <FolderPlusIcon className="mr-2 size-4" />
           New Folder
         </ContextMenuItem>

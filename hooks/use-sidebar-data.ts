@@ -3,8 +3,8 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useTabStore } from "@/lib/stores/tab-store"
-import { useCardModeStore } from "@/lib/stores/card-mode-store"
 import { useFsWatch } from "@/hooks/use-fs-watch"
+import { useCardModeStore } from "@/lib/stores/card-mode-store"
 import type { TreeNode } from "@/types/note"
 
 /** Walk tree to find the parent folder ID of a given note ID */
@@ -51,15 +51,6 @@ export function useSidebarData() {
     }
   }, [activeTabId, tree])
 
-  const SHOW_ALL_KEY = "openvlt:show-all-files"
-  const [showAllFiles, setShowAllFiles] = React.useState(true)
-  React.useEffect(() => {
-    // Default to showing all files unless explicitly turned off
-    const stored = localStorage.getItem(SHOW_ALL_KEY)
-    setShowAllFiles(stored !== "false")
-  }, [])
-  const showAllRef = React.useRef(showAllFiles)
-  showAllRef.current = showAllFiles
   const [dbViews, setDbViews] = React.useState<
     { id: string; name: string; viewType: string }[]
   >([])
@@ -68,12 +59,12 @@ export function useSidebarData() {
     displayName: string
   } | null>(null)
   const [sidebarMode, setSidebarMode] = React.useState<
-    "simple" | "advanced" | "card"
+    "advanced" | "card"
   >(() => {
-    if (typeof window === "undefined") return "simple"
+    if (typeof window === "undefined") return "advanced"
     const stored = localStorage.getItem("openvlt:sidebar-mode")
-    if (stored === "advanced" || stored === "card") return stored
-    return "simple"
+    if (stored === "card") return "card"
+    return "advanced"
   })
   const { setPanels: setCardPanels, reset: resetCardPanels } =
     useCardModeStore()
@@ -96,17 +87,9 @@ export function useSidebarData() {
     }
   }, [setCardPanels, sidebarMode])
 
-  const sidebarModeRef = React.useRef(sidebarMode)
-  sidebarModeRef.current = sidebarMode
-
-  const fetchTree = React.useCallback(async (mode?: string) => {
-    const currentMode = mode ?? sidebarModeRef.current
+  const fetchTree = React.useCallback(async () => {
     try {
-      const params = new URLSearchParams()
-      if (currentMode === "advanced") params.set("mode", "advanced")
-      if (showAllRef.current) params.set("showAll", "true")
-      const qs = params.toString()
-      const url = qs ? `/api/folders?${qs}` : "/api/folders"
+      const url = "/api/folders?mode=advanced"
       const res = await fetch(url)
       if (res.ok) {
         setHasVault(true)
@@ -120,10 +103,10 @@ export function useSidebarData() {
   }, [])
 
   function handleModeChange(value: string) {
-    const mode = value as "simple" | "advanced" | "card"
+    const mode = value as "advanced" | "card"
     setSidebarMode(mode)
     localStorage.setItem("openvlt:sidebar-mode", mode)
-    fetchTree(mode)
+    fetchTree()
 
     if (mode === "card") {
       setCardPanels([
@@ -174,13 +157,22 @@ export function useSidebarData() {
     router.push("/notes")
   }
 
-  async function handleCreateNote() {
+  // Unified create helpers.
+  // parentId === undefined  → use activeFolderId (toolbar buttons)
+  // parentId === null       → root (right-click empty space)
+  // parentId === "some-id"  → that specific folder
+  function resolveParent(parentId?: string | null): string | null {
+    if (parentId === undefined) return activeFolderId
+    return parentId
+  }
+
+  async function handleCreateNote(parentId?: string | null) {
     if (!hasVault) return
     try {
       const res = await fetch("/api/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Untitled", parentId: activeFolderId }),
+        body: JSON.stringify({ title: "Untitled", parentId: resolveParent(parentId) }),
       })
       if (res.ok) {
         const note = await res.json()
@@ -190,7 +182,7 @@ export function useSidebarData() {
     } catch {}
   }
 
-  async function handleCreateCanvas() {
+  async function handleCreateCanvas(parentId?: string | null) {
     if (!hasVault) return
     try {
       const res = await fetch("/api/notes", {
@@ -199,7 +191,7 @@ export function useSidebarData() {
         body: JSON.stringify({
           title: "Untitled Canvas",
           noteType: "canvas",
-          parentId: activeFolderId,
+          parentId: resolveParent(parentId),
         }),
       })
       if (res.ok) {
@@ -210,7 +202,7 @@ export function useSidebarData() {
     } catch {}
   }
 
-  async function handleCreateExcalidraw() {
+  async function handleCreateExcalidraw(parentId?: string | null) {
     if (!hasVault) return
     try {
       const res = await fetch("/api/notes", {
@@ -219,7 +211,7 @@ export function useSidebarData() {
         body: JSON.stringify({
           title: "Untitled Drawing",
           noteType: "excalidraw",
-          parentId: activeFolderId,
+          parentId: resolveParent(parentId),
         }),
       })
       if (res.ok) {
@@ -230,8 +222,11 @@ export function useSidebarData() {
     } catch {}
   }
 
-  function handleCreateFolder() {
+  const createFolderParentRef = React.useRef<string | null | undefined>(undefined)
+
+  function handleCreateFolder(parentId?: string | null) {
     if (!hasVault) return
+    createFolderParentRef.current = parentId
     setFolderDialogOpen(true)
   }
 
@@ -239,8 +234,9 @@ export function useSidebarData() {
     await fetch("/api/folders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, parentId: activeFolderId }),
+      body: JSON.stringify({ name, parentId: resolveParent(createFolderParentRef.current) }),
     })
+    createFolderParentRef.current = undefined
     fetchTree()
   }
 
@@ -283,13 +279,5 @@ export function useSidebarData() {
     handleCreateFolder,
     handleFolderCreated,
     handleCreateDbView,
-    showAllFiles,
-    toggleShowAllFiles() {
-      const next = !showAllRef.current
-      setShowAllFiles(next)
-      localStorage.setItem(SHOW_ALL_KEY, String(next))
-      showAllRef.current = next
-      fetchTree()
-    },
   }
 }

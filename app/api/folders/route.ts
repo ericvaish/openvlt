@@ -9,8 +9,7 @@ export async function GET(request: NextRequest) {
     // Reconcile DB with disk before returning tree (catches external changes)
     reconcileVault(vaultId)
     const advanced = request.nextUrl.searchParams.get("mode") === "advanced"
-    const showAll = request.nextUrl.searchParams.get("showAll") === "true"
-    const tree = getFolderTree(user.id, vaultId, advanced, showAll)
+    const tree = getFolderTree(user.id, vaultId, advanced)
     return NextResponse.json(tree)
   } catch (error) {
     if (error instanceof AuthError) {
