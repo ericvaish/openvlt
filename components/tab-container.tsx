@@ -105,6 +105,7 @@ export function TabContainer() {
   const {
     tabs,
     activeTabId,
+    hydrated,
     setActiveTab,
     splitNoteId,
     splitTitle,
@@ -176,6 +177,10 @@ export function TabContainer() {
   }
 
   React.useEffect(() => {
+    // Don't sync URL until tab store has hydrated from localStorage,
+    // otherwise the initial null activeTabId pushes us to /notes
+    // before the real active tab is restored.
+    if (!hydrated) return
     if (!activeTabId) {
       // No tabs open — go to /notes (empty state)
       const current = window.location.pathname + window.location.search
@@ -195,7 +200,7 @@ export function TabContainer() {
     if (current !== target) {
       nativeReplaceState(null, "", target)
     }
-  }, [activeTabId, nativeReplaceState])
+  }, [activeTabId, hydrated, nativeReplaceState])
 
   // Listen for popstate (browser back/forward)
   React.useEffect(() => {

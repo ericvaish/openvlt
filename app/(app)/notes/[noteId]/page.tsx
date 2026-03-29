@@ -26,7 +26,7 @@ export default async function NotePage({
     }
 
     if (!note) {
-      notFound()
+      redirect("/notes")
     }
 
     return <TabActivator noteId={note.metadata.id} title={note.metadata.title} />
@@ -35,6 +35,6 @@ export default async function NotePage({
       redirect("/login")
     }
     // Note file missing, DB error, etc. - redirect to notes list
-    notFound()
+    redirect("/notes")
   }
 }

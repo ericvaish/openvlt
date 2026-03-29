@@ -25,6 +25,7 @@ interface TabState {
 }
 
 interface TabStore extends TabState {
+  hydrated: boolean
   recentlyClosed: ClosedTab[]
   openTab: (noteId: string, title: string, activate?: boolean) => void
   closeTab: (noteId: string) => void
@@ -102,30 +103,30 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
     splitTitle: null,
   })
   const [recentlyClosed, setRecentlyClosed] = React.useState<ClosedTab[]>([])
-  const hydratedRef = React.useRef(false)
+  const [hydrated, setHydrated] = React.useState(false)
 
   React.useEffect(() => {
-    if (!hydratedRef.current) {
-      hydratedRef.current = true
+    if (!hydrated) {
       const saved = loadState()
       if (saved.tabs.length > 0) {
         setState(saved)
       }
       setRecentlyClosed(loadRecentlyClosed())
+      setHydrated(true)
     }
-  }, [])
+  }, [hydrated])
 
   React.useEffect(() => {
-    if (hydratedRef.current) {
+    if (hydrated) {
       persist(state)
     }
-  }, [state])
+  }, [state, hydrated])
 
   React.useEffect(() => {
-    if (hydratedRef.current) {
+    if (hydrated) {
       persistRecentlyClosed(recentlyClosed)
     }
-  }, [recentlyClosed])
+  }, [recentlyClosed, hydrated])
 
   const openTab = React.useCallback(
     (noteId: string, title: string, activate = true) => {
@@ -279,6 +280,7 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
   const store = React.useMemo<TabStore>(
     () => ({
       ...state,
+      hydrated,
       recentlyClosed,
       openTab,
       closeTab,
@@ -292,7 +294,7 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
       closeSplit,
       closeMainAndPromoteSplit,
     }),
-    [state, recentlyClosed, openTab, closeTab, closeAllTabs, closeOtherTabs, reopenClosedTab, setActiveTab, updateTabTitle, reorderTab, openSplit, closeSplit, closeMainAndPromoteSplit]
+    [state, hydrated, recentlyClosed, openTab, closeTab, closeAllTabs, closeOtherTabs, reopenClosedTab, setActiveTab, updateTabTitle, reorderTab, openSplit, closeSplit, closeMainAndPromoteSplit]
   )
 
   return <TabContext.Provider value={store}>{children}</TabContext.Provider>

@@ -538,7 +538,20 @@ export function SidebarTree({
     <MultiSelectContext.Provider value={multiSelectCtx}>
       <ExpandedContext.Provider value={expandedCtx}>
         <DragContext.Provider value={{ draggedNode, setDraggedNode }}>
-          <div ref={treeContainerRef} tabIndex={-1} className="outline-none">
+          <div
+            ref={treeContainerRef}
+            tabIndex={-1}
+            className="min-h-full outline-none"
+            onClick={(e) => {
+              // Click on empty space → deselect folder/item
+              const target = e.target as HTMLElement
+              if (!target.closest("[data-tree-id]")) {
+                onFolderActivate?.(null)
+                onItemActivate?.(null)
+                multiSelectCtx.clearSelection()
+              }
+            }}
+          >
           {selectedIds.size > 1 && (
             <SelectionBar
               nodes={nodes}
