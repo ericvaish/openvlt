@@ -169,7 +169,7 @@ export function listPairingsForUser(userId: string): SyncPairing[] {
     .prepare(
       `SELECT sp.* FROM sync_pairings sp
        JOIN vaults v ON v.id = sp.local_vault_id
-       WHERE v.user_id = ?`
+       WHERE v.user_id = ? AND sp.is_active = 1`
     )
     .all(userId) as Record<string, unknown>[]
 

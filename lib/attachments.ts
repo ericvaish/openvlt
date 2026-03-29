@@ -299,3 +299,4 @@ export function getAttachmentPath(
 
   return safeResolvePath(vaultRoot, row.file_path)
 }
+

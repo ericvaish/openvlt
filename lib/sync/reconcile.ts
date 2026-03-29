@@ -3,6 +3,7 @@ import path from "path"
 import { v4 as uuid } from "uuid"
 import { getDb } from "@/lib/db"
 import { getVaultPath } from "@/lib/vaults/service"
+import { getMimeType } from "@/lib/folders"
 
 // Throttle: only reconcile a given vault at most once per 2 seconds
 const lastReconcile = new Map<string, number>()
@@ -122,9 +123,35 @@ export function reconcileVault(vaultId: string, force = false): void {
     ).map((r) => r.file_path)
   )
 
+  const knownAttachmentPaths = new Set(
+    (
+      db
+        .prepare(
+          `SELECT a.file_path FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+           WHERE n.user_id = ? AND n.vault_id = ?`
+        )
+        .all(userId, vaultId) as { file_path: string }[]
+    ).map((r) => r.file_path)
+  )
+
+  // Build a map from note directory to note ID for attachment registration
+  const noteDirToId = new Map<string, string>()
+  const noteRows = db
+    .prepare(
+      "SELECT id, file_path FROM notes WHERE user_id = ? AND vault_id = ?"
+    )
+    .all(userId, vaultId) as { id: string; file_path: string }[]
+  for (const row of noteRows) {
+    noteDirToId.set(path.dirname(row.file_path), row.id)
+  }
+
   // Recursively scan the vault directory
-  scanDirectory(vaultRoot, "", userId, vaultId, knownFolderPaths, knownNotePaths)
+  scanDirectory(vaultRoot, "", userId, vaultId, knownFolderPaths, knownNotePaths, knownAttachmentPaths, noteDirToId)
 }
+
+/** Note file extensions — files matching these are notes, not attachments */
+const NOTE_EXTS = new Set([".md", ".json", ".openvlt"])
 
 function scanDirectory(
   vaultRoot: string,
@@ -132,7 +159,9 @@ function scanDirectory(
   userId: string,
   vaultId: string,
   knownFolderPaths: Set<string>,
-  knownNotePaths: Set<string>
+  knownNotePaths: Set<string>,
+  knownAttachmentPaths: Set<string>,
+  noteDirToId: Map<string, string>
 ): void {
   const db = getDb()
   const fullPath = relativePath
@@ -179,16 +208,16 @@ function scanDirectory(
       }
 
       // Recurse into subdirectory
-      scanDirectory(vaultRoot, entryRelative, userId, vaultId, knownFolderPaths, knownNotePaths)
-    } else if (
-      entry.isFile() &&
-      (entry.name.endsWith(".md") ||
+      scanDirectory(vaultRoot, entryRelative, userId, vaultId, knownFolderPaths, knownNotePaths, knownAttachmentPaths, noteDirToId)
+    } else if (entry.isFile()) {
+      const ext = path.extname(entry.name).toLowerCase()
+      const isNote =
+        entry.name.endsWith(".md") ||
         entry.name.endsWith(".openvlt") ||
-        entry.name.endsWith(".excalidraw.json"))
-    ) {
-      // Check if note exists in DB
-      if (!knownNotePaths.has(entryRelative)) {
-        // Find parent folder ID
+        entry.name.endsWith(".excalidraw.json")
+
+      if (isNote && !knownNotePaths.has(entryRelative)) {
+        // Register untracked note file
         const parentPath = relativePath || null
         let parentId: string | null = null
         if (parentPath) {
@@ -201,7 +230,6 @@ function scanDirectory(
         }
 
         const noteId = uuid()
-        // Derive title and note_type from filename
         let title: string
         let noteType: string = "markdown"
         if (entry.name.endsWith(".excalidraw.json")) {
@@ -215,7 +243,6 @@ function scanDirectory(
         }
         const now = new Date().toISOString()
 
-        // Read content for FTS indexing (only for markdown)
         let content = ""
         if (noteType === "markdown") {
           try {
@@ -228,13 +255,39 @@ function scanDirectory(
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(noteId, title, entryRelative, parentId, userId, vaultId, now, now, noteType)
 
-        // Index for full-text search
         db.prepare(
           `INSERT INTO notes_fts (rowid, title, content)
            VALUES ((SELECT rowid FROM notes WHERE id = ?), ?, ?)`
         ).run(noteId, title, content)
 
         knownNotePaths.add(entryRelative)
+        // Track this new note's folder for attachment registration
+        noteDirToId.set(relativePath || ".", noteId)
+      } else if (
+        !isNote &&
+        !knownAttachmentPaths.has(entryRelative) &&
+        !NOTE_EXTS.has(ext)
+      ) {
+        // Non-note file: register as attachment if it's inside a note's folder
+        const noteId = noteDirToId.get(relativePath || ".")
+        if (noteId) {
+          const fileFull = path.join(fullPath, entry.name)
+          try {
+            const stats = fs.statSync(fileFull)
+            const mimeType = getMimeType(entry.name)
+            const id = uuid()
+            const now = new Date().toISOString()
+
+            db.prepare(
+              `INSERT INTO attachments (id, note_id, file_name, file_path, mime_type, size_bytes, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`
+            ).run(id, noteId, entry.name, entryRelative, mimeType, stats.size, now)
+
+            knownAttachmentPaths.add(entryRelative)
+          } catch {
+            // Skip unreadable files
+          }
+        }
       }
     }
   }

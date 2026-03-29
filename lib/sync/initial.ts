@@ -130,8 +130,8 @@ export async function performInitialSync(
 
       // Both have this note - check if content differs
       if (localNote.contentHash !== remoteNote.contentHash) {
-        // Content conflict during initial sync
-        // Since there's no common ancestor, just keep local and create .conflict
+        // Content differs: keep local as-is, create remote version as a
+        // separate note with "(synced)" suffix so nothing is lost.
         const contentRes = await peerFetch(
           pairingId,
           localPeer.id,
@@ -147,11 +147,26 @@ export async function performInitialSync(
           const { content: remoteContent } = (await contentRes.json()) as {
             content: string
           }
-          const conflictPath = filePath.replace(/\.md$/, ".conflict.md")
+          const { createNote } =
+            require("@/lib/notes") as typeof import("@/lib/notes")
+          const userId = getVaultUserId(vaultId)
+          const noteDir = filePath.includes("/")
+            ? filePath.substring(0, filePath.lastIndexOf("/"))
+            : null
+          const localParentId = noteDir
+            ? getLocalFolderIdByPath(vaultId, noteDir)
+            : null
+
           try {
-            const fullPath = safeResolvePath(vaultRoot, conflictPath)
-            fs.writeFileSync(fullPath, remoteContent, "utf-8")
-            conflicts++
+            // createNote auto-deduplicates the filename if it already exists
+            createNote(
+              `${remoteNote.title} (synced)`,
+              userId,
+              vaultId,
+              localParentId,
+              remoteContent
+            )
+            received++
           } catch {}
         }
       }

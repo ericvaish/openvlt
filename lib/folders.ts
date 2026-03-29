@@ -612,7 +612,7 @@ const MIME_MAP: Record<string, string> = {
   ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 
-function getMimeType(filePath: string): string {
+export function getMimeType(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase()
   return MIME_MAP[ext] || "application/octet-stream"
 }

@@ -72,6 +72,7 @@ function SectionCard({
   description?: string
   icon?: React.ElementType
   children: React.ReactNode
+  badge?: string
   variant?: "default" | "destructive"
 }) {
   return (
@@ -99,6 +100,11 @@ function SectionCard({
             }`}
           >
             {title}
+            {badge && (
+              <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {badge}
+              </span>
+            )}
           </h3>
           {description && (
             <p className="text-xs text-muted-foreground">{description}</p>
@@ -1781,6 +1787,7 @@ export function SettingsPanel() {
                 title="Peer Sync"
                 description="Sync notes between openvlt instances"
                 icon={ServerIcon}
+                badge="Alpha"
               >
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">

@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation"
-import { getNote } from "@/lib/notes"
+import { getNote, findNoteVault } from "@/lib/notes"
 import { requireAuthWithVault } from "@/lib/auth/middleware"
 import { AuthError } from "@/lib/auth/middleware"
+import { setActiveVault } from "@/lib/vaults/service"
 import { TabActivator } from "@/components/tab-activator"
 
 export default async function NotePage({
@@ -10,9 +11,19 @@ export default async function NotePage({
   params: Promise<{ noteId: string }>
 }) {
   try {
-    const { user, vaultId } = await requireAuthWithVault()
+    let { user, vaultId } = await requireAuthWithVault()
     const { noteId } = await params
-    const note = getNote(noteId, user.id, vaultId)
+    let note = getNote(noteId, user.id, vaultId)
+
+    // Auto-resolve vault mismatch: note may belong to another vault
+    if (!note) {
+      const actualVaultId = findNoteVault(noteId, user.id)
+      if (actualVaultId && actualVaultId !== vaultId) {
+        setActiveVault(user.id, actualVaultId)
+        vaultId = actualVaultId
+        note = getNote(noteId, user.id, vaultId)
+      }
+    }
 
     if (!note) {
       notFound()

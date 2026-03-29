@@ -63,6 +63,21 @@ function toMetadata(row: Record<string, unknown>): NoteMetadata {
   return rowToMetadata(row, getTagsForNote(row.id as string))
 }
 
+/**
+ * Find which vault a note belongs to for a given user.
+ * Returns the vault_id if found in a different vault, null otherwise.
+ */
+export function findNoteVault(
+  noteId: string,
+  userId: string
+): string | null {
+  const db = getDb()
+  const row = db
+    .prepare("SELECT vault_id FROM notes WHERE id = ? AND user_id = ?")
+    .get(noteId, userId) as { vault_id: string } | undefined
+  return row?.vault_id ?? null
+}
+
 /** Batch convert rows to metadata with a single tag query for all notes */
 function toMetadataBatch(rows: Record<string, unknown>[]): NoteMetadata[] {
   if (rows.length === 0) return []

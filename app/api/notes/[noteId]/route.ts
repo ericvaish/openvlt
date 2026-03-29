@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
   getNote,
+  findNoteVault,
   updateNoteContent,
   updateNoteTitle,
   updateNoteIcon,
@@ -14,15 +15,27 @@ import {
 } from "@/lib/notes"
 import { cleanupOrphanedAttachments } from "@/lib/attachments"
 import { AuthError, requireAuthWithVault } from "@/lib/auth/middleware"
+import { setActiveVault } from "@/lib/vaults/service"
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ noteId: string }> }
 ) {
   try {
-    const { user, vaultId } = await requireAuthWithVault()
+    let { user, vaultId } = await requireAuthWithVault()
     const { noteId } = await params
-    const note = getNote(noteId, user.id, vaultId)
+    let note = getNote(noteId, user.id, vaultId)
+
+    // If note not found in active vault, check other vaults the user owns
+    if (!note) {
+      const actualVaultId = findNoteVault(noteId, user.id)
+      if (actualVaultId && actualVaultId !== vaultId) {
+        setActiveVault(user.id, actualVaultId)
+        vaultId = actualVaultId
+        note = getNote(noteId, user.id, vaultId)
+      }
+    }
+
     if (!note) {
       return NextResponse.json({ error: "Note not found" }, { status: 404 })
     }
@@ -41,6 +54,7 @@ export async function GET(
       )
     }
 
+    // If vault was switched, tell the client to refresh sidebar
     return NextResponse.json(note)
   } catch (error) {
     if (error instanceof AuthError) {
@@ -61,8 +75,18 @@ export async function PUT(
   { params }: { params: Promise<{ noteId: string }> }
 ) {
   try {
-    const { user, vaultId } = await requireAuthWithVault()
+    let { user, vaultId } = await requireAuthWithVault()
     const { noteId } = await params
+
+    // Auto-resolve vault mismatch
+    if (!getNote(noteId, user.id, vaultId)) {
+      const actualVaultId = findNoteVault(noteId, user.id)
+      if (actualVaultId && actualVaultId !== vaultId) {
+        setActiveVault(user.id, actualVaultId)
+        vaultId = actualVaultId
+      }
+    }
+
     const body = await request.json()
 
     if (body.content !== undefined) {
@@ -159,10 +183,16 @@ export async function DELETE(
   { params }: { params: Promise<{ noteId: string }> }
 ) {
   try {
-    const { user, vaultId } = await requireAuthWithVault()
+    let { user, vaultId } = await requireAuthWithVault()
     const { noteId } = await params
     const { searchParams } = request.nextUrl
     const hard = searchParams.get("hard") === "true"
+
+    // Auto-resolve vault mismatch
+    const actualVaultId = findNoteVault(noteId, user.id)
+    if (actualVaultId && actualVaultId !== vaultId) {
+      vaultId = actualVaultId
+    }
 
     deleteNote(noteId, user.id, vaultId, hard)
     return NextResponse.json({ success: true })

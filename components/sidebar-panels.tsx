@@ -23,6 +23,7 @@ import {
   ChevronsUpDownIcon,
   SunIcon,
   MoonIcon,
+  RefreshCwIcon,
 } from "lucide-react"
 import {
   SidebarMenu,
@@ -110,6 +111,22 @@ export function FilesPanel({
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   {data.showAllFiles ? "Show notes only" : "Show all files"}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={async () => {
+                      await fetch("/api/vaults/sync", { method: "POST" })
+                      data.fetchTree()
+                    }}
+                    className="inline-flex size-5 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  >
+                    <RefreshCwIcon className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Sync files from disk
                 </TooltipContent>
               </Tooltip>
               <DropdownMenu>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { AuthError, requireAuthWithVault } from "@/lib/auth/middleware"
 import { getLocalPeer, storePairing } from "@/lib/sync/peer"
+import { performInitialSync } from "@/lib/sync/initial"
+import { connectNewPairing } from "@/lib/sync/engine"
 
 /**
  * Server-side proxy for code-based peer sync pairing.
@@ -83,10 +85,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Perform initial sync (pull/push existing notes)
+    let syncResult = { sent: 0, received: 0, conflicts: 0 }
+    try {
+      syncResult = await performInitialSync(
+        data.pairingId,
+        vaultId,
+        remoteUrl
+      )
+      console.log(
+        `[pair/code/initiate] Initial sync: sent=${syncResult.sent}, received=${syncResult.received}, conflicts=${syncResult.conflicts}`
+      )
+    } catch (err) {
+      console.error("[pair/code/initiate] Initial sync failed:", err)
+      // Don't fail the pairing — incremental sync will catch up
+    }
+
+    // Start live sync connection for this pairing
+    try {
+      connectNewPairing(data.pairingId, vaultId, remoteUrl)
+    } catch (err) {
+      console.error("[pair/code/initiate] Failed to start live sync:", err)
+    }
+
     return NextResponse.json({
       success: true,
       pairingId: data.pairingId,
       remotePeerName: data.peerName,
+      initialSync: syncResult,
     })
   } catch (error) {
     if (error instanceof AuthError) {

@@ -58,6 +58,18 @@ export function startSyncEngine(): void {
 }
 
 /**
+ * Connect a newly established pairing and start live sync.
+ * Called after initial sync completes.
+ */
+export function connectNewPairing(
+  pairingId: string,
+  vaultId: string,
+  remoteUrl: string
+): void {
+  connectToPeer(pairingId, vaultId, remoteUrl)
+}
+
+/**
  * Establish an SSE connection to a remote peer for change notifications.
  */
 function connectToPeer(
