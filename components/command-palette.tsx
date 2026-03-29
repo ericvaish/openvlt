@@ -267,7 +267,7 @@ export function CommandPalette() {
   return (
   <>
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <Command shouldFilter={false}>
+      <Command shouldFilter={false} className="[&_[data-slot=command-input-wrapper]]:border-b-0 [&_[cmdk-separator]]:hidden">
         <CommandInput
           placeholder="Search notes or type a command..."
           value={query}

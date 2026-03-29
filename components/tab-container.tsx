@@ -121,6 +121,22 @@ export function TabContainer() {
   storeRef.current = store
 
   const [dropSide, setDropSide] = React.useState<"left" | "right" | null>(null)
+
+  // Fetch recent notes from API for the welcome screen (not from closed tabs)
+  const [welcomeRecent, setWelcomeRecent] = React.useState<
+    { noteId: string; title: string; updatedAt: string }[]
+  >([])
+  React.useEffect(() => {
+    if (tabs.length > 0) return
+    fetch("/api/notes?limit=5&sort=updatedAt")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((notes: { id: string; title: string; updatedAt: string }[]) => {
+        setWelcomeRecent(
+          notes.map((n) => ({ noteId: n.id, title: n.title, updatedAt: n.updatedAt }))
+        )
+      })
+      .catch(() => {})
+  }, [tabs.length])
   const [isDraggingTab, setIsDraggingTab] = React.useState(false)
   const contentAreaRef = React.useRef<HTMLDivElement>(null)
   const [userName, setUserName] = React.useState<string | null>(null)
@@ -297,9 +313,7 @@ export function TabContainer() {
     const mascot =
       hour < 5 || hour >= 21 ? "/sleep.svg" : hour < 12 ? "/flower.svg" : "/celebrate.svg"
     const quote = getMascotQuote(hour)
-    const recentNotes = recentlyClosed
-      .filter((t) => !t.noteId.startsWith("__"))
-      .slice(0, 5)
+    const recentNotes = welcomeRecent
 
     return (
       <div
@@ -401,7 +415,7 @@ export function TabContainer() {
                       {recentNotes.map((note) => (
                         <tr
                           key={note.noteId}
-                          onClick={() => reopenClosedTab(note.noteId)}
+                          onClick={() => openTab(note.noteId, note.title)}
                           className="group cursor-pointer border-b border-border/30 last:border-b-0"
                         >
                           <td className="py-2.5 pr-3 text-sm text-muted-foreground/60 transition-colors group-hover:text-foreground">
@@ -410,7 +424,7 @@ export function TabContainer() {
                             </span>
                           </td>
                           <td className="py-2.5 text-right text-xs text-muted-foreground/30 transition-colors group-hover:text-muted-foreground">
-                            {formatClosedTime(note.closedAt)}
+                            {formatClosedTime(new Date(note.updatedAt).getTime())}
                           </td>
                         </tr>
                       ))}
