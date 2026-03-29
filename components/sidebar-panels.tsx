@@ -171,7 +171,7 @@ export function FilesPanel({
                 Use the section panels to browse your notes.
               </div>
             ) : (
-              <SidebarGroupContent className="px-1">
+              <SidebarGroupContent className="px-1 pt-1">
                 <SidebarTree
                   nodes={data.tree}
                   onRefresh={data.fetchTree}

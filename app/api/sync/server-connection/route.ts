@@ -13,17 +13,39 @@ export async function GET() {
     const connectedAt = getConfig("sync_connected_at")
     const lastSyncAt = getConfig("sync_last_sync_at")
 
-    // If this is a server, count connected clients from heartbeats
-    let clientCount = 0
+    // If this is a server, get connected devices from heartbeats
+    const devices: {
+      deviceId: string
+      displayName: string
+      lastSeenAt: string
+      browser: string | null
+      os: string | null
+      isOnline: boolean
+    }[] = []
     if (role === "server") {
       const db = getDb()
-      const threshold = new Date(Date.now() - 2 * 60 * 1000).toISOString()
-      const row = db
+      const rows = db
         .prepare(
-          "SELECT COUNT(DISTINCT device_id) as count FROM device_heartbeats WHERE last_seen_at > ?"
+          "SELECT device_id, display_name, last_seen_at, browser, os FROM device_heartbeats ORDER BY last_seen_at DESC"
         )
-        .get(threshold) as { count: number }
-      clientCount = row.count
+        .all() as {
+        device_id: string
+        display_name: string
+        last_seen_at: string
+        browser: string | null
+        os: string | null
+      }[]
+      const now = Date.now()
+      for (const r of rows) {
+        devices.push({
+          deviceId: r.device_id,
+          displayName: r.display_name,
+          lastSeenAt: r.last_seen_at,
+          browser: r.browser,
+          os: r.os,
+          isOnline: now - new Date(r.last_seen_at).getTime() < 2 * 60 * 1000,
+        })
+      }
     }
 
     return NextResponse.json({
@@ -32,7 +54,8 @@ export async function GET() {
       username,
       connectedAt,
       lastSyncAt,
-      clientCount,
+      clientCount: devices.filter((d) => d.isOnline).length,
+      devices,
     })
   } catch (error) {
     if (error instanceof AuthError) {
@@ -96,6 +119,16 @@ export async function POST(request: NextRequest) {
         )
       }
       token = tokenMatch[1]
+
+      // Notify the remote server that it is now a server
+      try {
+        await fetch(`${normalizedUrl}/api/sync/server-connection/promote`, {
+          method: "POST",
+          headers: { Cookie: `openvlt_session=${token}` },
+        })
+      } catch {
+        // Non-fatal: server promotion is best-effort
+      }
     } catch {
       return NextResponse.json(
         { error: "Could not reach the server. Check the URL and try again." },

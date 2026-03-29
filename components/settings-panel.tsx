@@ -124,6 +124,15 @@ function SectionCard({
 
 // ── Instance Sync Section ──
 
+interface SyncDevice {
+  deviceId: string
+  displayName: string
+  lastSeenAt: string
+  browser: string | null
+  os: string | null
+  isOnline: boolean
+}
+
 interface SyncConnectionStatus {
   role: "standalone" | "client" | "server"
   serverUrl: string | null
@@ -131,6 +140,7 @@ interface SyncConnectionStatus {
   connectedAt: string | null
   lastSyncAt: string | null
   clientCount: number
+  devices: SyncDevice[]
 }
 
 function InstanceSyncSection() {
@@ -141,21 +151,47 @@ function InstanceSyncSection() {
     connectedAt: null,
     lastSyncAt: null,
     clientCount: 0,
+    devices: [],
   })
   const [serverUrl, setServerUrl] = React.useState("")
   const [username, setUsername] = React.useState("")
   const [password, setPassword] = React.useState("")
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [serverLive, setServerLive] = React.useState<boolean | null>(null)
 
   React.useEffect(() => {
-    fetch("/api/sync/server-connection")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) setStatus(data)
-      })
-      .catch(() => {})
-  }, [])
+    async function fetchStatus() {
+      try {
+        const res = await fetch("/api/sync/server-connection")
+        if (res.ok) {
+          const data = await res.json()
+          setStatus(data)
+        }
+      } catch {}
+
+      // If client, ping the server to check if it's live
+      const url = status.serverUrl
+      if (status.role === "client" && url) {
+        try {
+          const res = await fetch(`${url}/api/sync/heartbeat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ deviceId: "ping", displayName: "ping" }),
+            signal: AbortSignal.timeout(5000),
+          })
+          setServerLive(res.ok || res.status === 401)
+        } catch {
+          setServerLive(false)
+        }
+      }
+    }
+
+    fetchStatus()
+    const interval = setInterval(fetchStatus, 30000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.role, status.serverUrl])
 
   async function handleConnect() {
     setLoading(true)
@@ -257,8 +293,9 @@ function InstanceSyncSection() {
     if (status.role === "client") {
       return (
         <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed bg-muted/30 p-6">
-          <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
+          <div className="relative flex size-12 items-center justify-center rounded-xl bg-muted">
             <MonitorIcon className="size-5 text-muted-foreground" />
+            <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-green-500 ring-2 ring-background" />
           </div>
           <p className="text-xs font-medium">This instance</p>
           <div className="flex flex-col items-center gap-0.5">
@@ -266,45 +303,72 @@ function InstanceSyncSection() {
             <span className="text-[10px] text-muted-foreground">syncs to</span>
             <div className="h-5 w-px bg-border" />
           </div>
-          <div className="flex size-12 items-center justify-center rounded-xl bg-blue-500/10">
+          <div className="relative flex size-12 items-center justify-center rounded-xl bg-blue-500/10">
             <ServerIcon className="size-5 text-blue-600 dark:text-blue-400" />
+            {serverLive !== null && (
+              <span
+                className={`absolute -right-0.5 -top-0.5 size-2.5 rounded-full ring-2 ring-background ${
+                  serverLive ? "bg-green-500" : "bg-red-500"
+                }`}
+              />
+            )}
           </div>
           <div className="text-center">
             <p className="text-xs font-medium">{status.serverUrl}</p>
-            <p className="text-[10px] text-muted-foreground">Primary server</p>
+            <p className="text-[10px] text-muted-foreground">
+              {serverLive === null
+                ? "Checking..."
+                : serverLive
+                  ? "Online"
+                  : "Offline"}
+            </p>
           </div>
         </div>
       )
     }
 
     // Server mode
+    const onlineDevices = status.devices.filter((d) => d.isOnline)
+    const offlineDevices = status.devices.filter((d) => !d.isOnline)
+
     return (
       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed bg-muted/30 p-6">
-        <div className="flex size-14 items-center justify-center rounded-xl bg-blue-500/10">
+        <div className="relative flex size-14 items-center justify-center rounded-xl bg-blue-500/10">
           <ServerIcon className="size-6 text-blue-600 dark:text-blue-400" />
+          <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-green-500 ring-2 ring-background" />
         </div>
         <div className="text-center">
           <p className="text-sm font-medium">This instance</p>
           <p className="text-xs text-muted-foreground">Primary server</p>
         </div>
-        {status.clientCount > 0 && (
+        {status.devices.length > 0 && (
           <>
             <div className="h-5 w-px bg-border" />
-            <div className="flex items-center gap-3">
-              {Array.from({ length: Math.min(status.clientCount, 5) }).map(
-                (_, i) => (
-                  <div
-                    key={i}
-                    className="flex size-10 items-center justify-center rounded-lg bg-muted"
-                  >
+            <div className="flex flex-wrap justify-center gap-3">
+              {status.devices.map((device) => (
+                <div
+                  key={device.deviceId}
+                  className="flex flex-col items-center gap-1"
+                  title={`${device.displayName}\nLast seen: ${new Date(device.lastSeenAt).toLocaleString()}`}
+                >
+                  <div className="relative flex size-10 items-center justify-center rounded-lg bg-muted">
                     <MonitorIcon className="size-4 text-muted-foreground" />
+                    <span
+                      className={`absolute -right-0.5 -top-0.5 size-2 rounded-full ring-2 ring-background ${
+                        device.isOnline ? "bg-green-500" : "bg-muted-foreground/30"
+                      }`}
+                    />
                   </div>
-                )
-              )}
+                  <p className="max-w-[80px] truncate text-[10px] text-muted-foreground">
+                    {device.displayName.split(" on ")[0]}
+                  </p>
+                </div>
+              ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              {status.clientCount} device{status.clientCount > 1 ? "s" : ""}{" "}
-              connected
+              {onlineDevices.length} online
+              {offlineDevices.length > 0 &&
+                `, ${offlineDevices.length} offline`}
             </p>
           </>
         )}
