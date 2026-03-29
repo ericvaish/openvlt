@@ -184,8 +184,21 @@ function scanDirectory(
       : entry.name
 
     if (entry.isDirectory()) {
-      // Check if folder exists in DB
-      if (!knownFolderPaths.has(entryRelative)) {
+      // Check if this directory is actually a note's container folder
+      // (e.g. Purchase/paddle/ containing paddle.md) — skip folder creation if so
+      const isNoteDir = noteDirToId.has(entryRelative) || (() => {
+        try {
+          const children = fs.readdirSync(path.join(fullPath, entry.name))
+          return children.some((c) => {
+            const base = path.parse(c).name.replace(/\.excalidraw$/, "")
+            return base === entry.name && (c.endsWith(".md") || c.endsWith(".excalidraw.json") || c.endsWith(".openvlt"))
+          })
+        } catch {
+          return false
+        }
+      })()
+
+      if (!isNoteDir && !knownFolderPaths.has(entryRelative)) {
         // Find parent folder ID
         const parentPath = relativePath || null
         let parentId: string | null = null
@@ -218,14 +231,21 @@ function scanDirectory(
 
       if (isNote && !knownNotePaths.has(entryRelative)) {
         // Register untracked note file
-        const parentPath = relativePath || null
+        // If this note is inside its own container dir (e.g. Purchase/paddle/paddle.md),
+        // the parent should be the grandparent folder (Purchase), not the note dir
+        let lookupPath = relativePath || null
+        if (lookupPath && !knownFolderPaths.has(lookupPath)) {
+          // Current dir isn't a folder — use its parent instead
+          const grandparent = path.dirname(lookupPath)
+          lookupPath = grandparent === "." ? null : grandparent
+        }
         let parentId: string | null = null
-        if (parentPath) {
+        if (lookupPath) {
           const parent = db
             .prepare(
               "SELECT id FROM folders WHERE path = ? AND user_id = ? AND vault_id = ?"
             )
-            .get(parentPath, userId, vaultId) as { id: string } | undefined
+            .get(lookupPath, userId, vaultId) as { id: string } | undefined
           parentId = parent?.id ?? null
         }
 
