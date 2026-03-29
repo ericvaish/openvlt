@@ -13,8 +13,8 @@ export async function GET() {
     const connectedAt = getConfig("sync_connected_at")
     const lastSyncAt = getConfig("sync_last_sync_at")
 
-    // If this is a server, get connected devices from heartbeats
-    const devices: {
+    // Get device list: from local DB if server, from remote if client
+    let devices: {
       deviceId: string
       displayName: string
       lastSeenAt: string
@@ -22,6 +22,8 @@ export async function GET() {
       os: string | null
       isOnline: boolean
     }[] = []
+    let serverLive: boolean | null = null
+
     if (role === "server") {
       const db = getDb()
       const rows = db
@@ -46,6 +48,30 @@ export async function GET() {
           isOnline: now - new Date(r.last_seen_at).getTime() < 2 * 60 * 1000,
         })
       }
+      serverLive = true
+    } else if (role === "client" && serverUrl) {
+      // Fetch device list from the remote server (server-side, no CORS)
+      const token = getConfig("sync_server_token")
+      if (token) {
+        try {
+          const res = await fetch(
+            `${serverUrl}/api/sync/server-connection`,
+            {
+              headers: { Cookie: `openvlt_session=${token}` },
+              signal: AbortSignal.timeout(5000),
+            }
+          )
+          if (res.ok) {
+            const data = await res.json()
+            devices = data.devices || []
+            serverLive = true
+          } else {
+            serverLive = false
+          }
+        } catch {
+          serverLive = false
+        }
+      }
     }
 
     return NextResponse.json({
@@ -56,6 +82,7 @@ export async function GET() {
       lastSyncAt,
       clientCount: devices.filter((d) => d.isOnline).length,
       devices,
+      serverLive,
     })
   } catch (error) {
     if (error instanceof AuthError) {
