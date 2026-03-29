@@ -66,6 +66,7 @@ function SectionCard({
   description,
   icon: Icon,
   children,
+  badge,
   variant = "default",
 }: {
   title: string
