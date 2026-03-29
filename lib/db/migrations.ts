@@ -945,6 +945,21 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 22,
+    description: "Add sync_clients table for tracking registered sync instances",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_clients (
+          id TEXT PRIMARY KEY,
+          instance_name TEXT NOT NULL,
+          username TEXT NOT NULL,
+          registered_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `)
+    },
+  },
 ]
 
 export function runMigrations(db: Database.Database) {

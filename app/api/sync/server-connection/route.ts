@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth/middleware"
 import { getConfig, setConfig } from "@/lib/admin/config"
 import { getDb } from "@/lib/db"
+import { v4 as uuid } from "uuid"
+import os from "os"
 
 export async function GET() {
   try {
@@ -13,47 +15,62 @@ export async function GET() {
     const connectedAt = getConfig("sync_connected_at")
     const lastSyncAt = getConfig("sync_last_sync_at")
 
-    // Get device list: from local DB if server, from remote if client
-    let devices: {
-      deviceId: string
-      displayName: string
+    // Get sync clients: from local DB if server, from remote if client
+    let clients: {
+      id: string
+      instanceName: string
+      username: string
       lastSeenAt: string
-      browser: string | null
-      os: string | null
       isOnline: boolean
     }[] = []
-    let serverLive: boolean | null = null
+    let sLive: boolean | null = null
 
     if (role === "server") {
       const db = getDb()
       const rows = db
         .prepare(
-          "SELECT device_id, display_name, last_seen_at, browser, os FROM device_heartbeats ORDER BY last_seen_at DESC"
+          "SELECT id, instance_name, username, last_seen_at FROM sync_clients ORDER BY last_seen_at DESC"
         )
         .all() as {
-        device_id: string
-        display_name: string
+        id: string
+        instance_name: string
+        username: string
         last_seen_at: string
-        browser: string | null
-        os: string | null
       }[]
       const now = Date.now()
       for (const r of rows) {
-        devices.push({
-          deviceId: r.device_id,
-          displayName: r.display_name,
+        clients.push({
+          id: r.id,
+          instanceName: r.instance_name,
+          username: r.username,
           lastSeenAt: r.last_seen_at,
-          browser: r.browser,
-          os: r.os,
-          isOnline: now - new Date(r.last_seen_at).getTime() < 2 * 60 * 1000,
+          isOnline:
+            now - new Date(r.last_seen_at).getTime() < 2 * 60 * 1000,
         })
       }
-      serverLive = true
+      sLive = true
     } else if (role === "client" && serverUrl) {
-      // Fetch device list from the remote server (server-side, no CORS)
       const token = getConfig("sync_server_token")
+      const clientId = getConfig("sync_client_id")
+      const instanceName =
+        getConfig("instance_name") || os.hostname() || "Unknown"
+
       if (token) {
         try {
+          // Ping the server (acts as heartbeat)
+          if (clientId) {
+            await fetch(`${serverUrl}/api/sync/clients/ping`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Cookie: `openvlt_session=${token}`,
+              },
+              body: JSON.stringify({ clientId, instanceName }),
+              signal: AbortSignal.timeout(5000),
+            })
+          }
+
+          // Fetch the client list from the server
           const res = await fetch(
             `${serverUrl}/api/sync/server-connection`,
             {
@@ -63,13 +80,13 @@ export async function GET() {
           )
           if (res.ok) {
             const data = await res.json()
-            devices = data.devices || []
-            serverLive = true
+            clients = data.clients || []
+            sLive = true
           } else {
-            serverLive = false
+            sLive = false
           }
         } catch {
-          serverLive = false
+          sLive = false
         }
       }
     }
@@ -80,9 +97,9 @@ export async function GET() {
       username,
       connectedAt,
       lastSyncAt,
-      clientCount: devices.filter((d) => d.isOnline).length,
-      devices,
-      serverLive,
+      clientCount: clients.filter((c) => c.isOnline).length,
+      clients,
+      serverLive: sLive,
     })
   } catch (error) {
     if (error instanceof AuthError) {
@@ -161,6 +178,29 @@ export async function POST(request: NextRequest) {
         { error: "Could not reach the server. Check the URL and try again." },
         { status: 400 }
       )
+    }
+
+    // Generate or retrieve a stable client ID
+    let clientId = getConfig("sync_client_id")
+    if (!clientId) {
+      clientId = uuid()
+      setConfig("sync_client_id", clientId)
+    }
+    const instanceName =
+      getConfig("instance_name") || os.hostname() || "Unknown"
+
+    // Register this client on the server
+    try {
+      await fetch(`${normalizedUrl}/api/sync/clients/ping`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `openvlt_session=${token}`,
+        },
+        body: JSON.stringify({ clientId, instanceName }),
+      })
+    } catch {
+      // Non-fatal: registration is best-effort
     }
 
     // Store connection config

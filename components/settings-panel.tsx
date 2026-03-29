@@ -124,12 +124,11 @@ function SectionCard({
 
 // ── Instance Sync Section ──
 
-interface SyncDevice {
-  deviceId: string
-  displayName: string
+interface SyncClient {
+  id: string
+  instanceName: string
+  username: string
   lastSeenAt: string
-  browser: string | null
-  os: string | null
   isOnline: boolean
 }
 
@@ -140,7 +139,7 @@ interface SyncConnectionStatus {
   connectedAt: string | null
   lastSyncAt: string | null
   clientCount: number
-  devices: SyncDevice[]
+  clients: SyncClient[]
   serverLive: boolean | null
 }
 
@@ -152,7 +151,7 @@ function InstanceSyncSection() {
     connectedAt: null,
     lastSyncAt: null,
     clientCount: 0,
-    devices: [],
+    clients: [],
     serverLive: null,
   })
   const [serverUrl, setServerUrl] = React.useState("")
@@ -276,8 +275,11 @@ function InstanceSyncSection() {
     // Unified diagram for both client and server
     const isServer = status.role === "server"
     const serverOnline = isServer ? true : status.serverLive
-    const onlineDevices = status.devices.filter((d) => d.isOnline)
-    const offlineDevices = status.devices.filter((d) => !d.isOnline)
+    const currentClientId = typeof window !== "undefined"
+      ? localStorage.getItem("openvlt:sync-client-id")
+      : null
+    const onlineClients = status.clients.filter((c) => c.isOnline)
+    const offlineClients = status.clients.filter((c) => !c.isOnline)
 
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-muted/30 p-6">
@@ -313,21 +315,21 @@ function InstanceSyncSection() {
         </div>
 
         {/* Connection line */}
-        {status.devices.length > 0 && (
+        {status.clients.length > 0 && (
           <div className="h-4 w-px bg-border" />
         )}
 
-        {/* Devices */}
-        {status.devices.length > 0 && (
+        {/* Clients */}
+        {status.clients.length > 0 ? (
           <>
             <div className="flex flex-wrap justify-center gap-3">
-              {status.devices.map((device) => {
-                const isThis = !isServer && device.displayName.includes("This")
+              {status.clients.map((client) => {
+                const isThis = !isServer && client.id === currentClientId
                 return (
                   <div
-                    key={device.deviceId}
+                    key={client.id}
                     className="flex flex-col items-center gap-1"
-                    title={`${device.displayName}\nLast seen: ${new Date(device.lastSeenAt).toLocaleString()}`}
+                    title={`${client.instanceName}\n@${client.username}\nLast seen: ${new Date(client.lastSeenAt).toLocaleString()}`}
                   >
                     <div
                       className={`relative flex size-10 items-center justify-center rounded-lg bg-muted ${
@@ -337,24 +339,31 @@ function InstanceSyncSection() {
                       <MonitorIcon className="size-4 text-muted-foreground" />
                       <span
                         className={`absolute -right-0.5 -top-0.5 size-2 rounded-full ring-2 ring-background ${
-                          device.isOnline ? "bg-green-500" : "bg-muted-foreground/30"
+                          client.isOnline ? "bg-green-500" : "bg-muted-foreground/30"
                         }`}
                       />
                     </div>
                     <p className="max-w-[80px] truncate text-[10px] text-muted-foreground">
-                      {device.displayName.split(" on ")[0]}
+                      {client.instanceName}
                     </p>
+                    {isThis && (
+                      <p className="text-[9px] text-primary">you</p>
+                    )}
                   </div>
                 )
               })}
             </div>
             <p className="text-xs text-muted-foreground">
-              {onlineDevices.length} online
-              {offlineDevices.length > 0 &&
-                `, ${offlineDevices.length} offline`}
+              {onlineClients.length} client{onlineClients.length !== 1 ? "s" : ""} online
+              {offlineClients.length > 0 &&
+                `, ${offlineClients.length} offline`}
             </p>
           </>
-        )}
+        ) : status.role === "server" ? (
+          <p className="text-xs text-muted-foreground">
+            No clients connected yet
+          </p>
+        ) : null}
       </div>
     )
   })()

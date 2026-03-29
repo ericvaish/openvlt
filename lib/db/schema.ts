@@ -353,6 +353,15 @@ export function initSchema(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_device_heartbeats_user ON device_heartbeats(user_id);
 
+    -- Sync clients: registered openvlt instances that sync with this server
+    CREATE TABLE IF NOT EXISTS sync_clients (
+      id TEXT PRIMARY KEY,
+      instance_name TEXT NOT NULL,
+      username TEXT NOT NULL,
+      registered_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- Synced blocks: content fragments shared across notes
     CREATE TABLE IF NOT EXISTS synced_blocks (
       id TEXT PRIMARY KEY,
